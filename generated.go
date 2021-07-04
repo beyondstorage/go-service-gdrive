@@ -149,7 +149,13 @@ type pairStorageNew struct {
 	pairs []Pair
 
 	// Required pairs
+	HasCredential bool
+	Credential    string
+	HasName       bool
+	Name          string
 	// Optional pairs
+	HasWorkDir bool
+	WorkDir    string
 }
 
 // parsePairStorageNew will parse Pair slice into *pairStorageNew
@@ -161,8 +167,32 @@ func parsePairStorageNew(opts []Pair) (pairStorageNew, error) {
 	for _, v := range opts {
 		switch v.Key {
 		// Required pairs
+		case "credential":
+			if result.HasCredential {
+				continue
+			}
+			result.HasCredential = true
+			result.Credential = v.Value.(string)
+		case "name":
+			if result.HasName {
+				continue
+			}
+			result.HasName = true
+			result.Name = v.Value.(string)
 		// Optional pairs
+		case "work_dir":
+			if result.HasWorkDir {
+				continue
+			}
+			result.HasWorkDir = true
+			result.WorkDir = v.Value.(string)
 		}
+	}
+	if !result.HasCredential {
+		return pairStorageNew{}, services.PairRequiredError{Keys: []string{"credential"}}
+	}
+	if !result.HasName {
+		return pairStorageNew{}, services.PairRequiredError{Keys: []string{"name"}}
 	}
 
 	return result, nil

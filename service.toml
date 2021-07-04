@@ -2,6 +2,9 @@ name = "gdrive"
 
 [namespace.storage]
 
+[namespace.storage.new]
+required = ["name","credential"]
+optional = ["work_dir"]
 [namespace.storage.op.create]
 optional = ["object_mode"]
 
