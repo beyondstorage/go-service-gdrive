@@ -18,7 +18,6 @@ type Storage struct {
 	name    string
 	workDir string
 	service *drive.Service
-	//pairPolicy   types.PairPolicy
 	defaultPairs DefaultStoragePairs
 	features     StorageFeatures
 
@@ -88,9 +87,9 @@ func formatError(err error) error {
 	}
 
 	//According to the docs, errors with the same error code may have
-	//multiple causes, To determine the specific type of error,
+	//multiple causes, to determine the specific type of error,
 	//we should evaluate the reason filed of the returned JSON
-	//https://developers.google.com/drive/api/v3/handle-errors
+	//Ref: https://developers.google.com/drive/api/v3/handle-errors
 	switch e.Errors[0].Reason {
 	case "authError":
 		return fmt.Errorf("%w: %v", credential.ErrInvalidValue, err)
