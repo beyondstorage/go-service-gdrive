@@ -96,7 +96,7 @@ func formatError(err error) error {
 	case "dailyLimitExceeded", "rateLimitExceeded", "userRateLimitExceeded":
 		return fmt.Errorf("%w: %v", services.ErrRequestThrottled, err)
 	case "backendError":
-		return fmt.Errorf("%w: %v", services.ErrServiceIntenal, err)
+		return fmt.Errorf("%w: %v", services.ErrServiceInternal, err)
 	case "notFound":
 		return fmt.Errorf("%w: %v", services.ErrObjectNotExist, err)
 	case "insufficientFilePermissions", "appNotAuthorizedToFile":
