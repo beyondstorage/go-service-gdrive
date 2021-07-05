@@ -93,11 +93,11 @@ func formatError(err error) error {
 	//https://developers.google.com/drive/api/v3/handle-errors
 	switch e.Errors[0].Reason {
 	case "authError":
-		return fmt.Errorf("%w: %v", ErrInvalidCredentials, err)
+		return fmt.Errorf("%w: %v", credential.ErrInvalidValue, err)
 	case "dailyLimitExceeded", "rateLimitExceeded", "userRateLimitExceeded":
-		return fmt.Errorf("%w: %v", ErrRateLimitExceeded, err)
+		return fmt.Errorf("%w: %v", services.ErrRequestThrottled, err)
 	case "backendError":
-		return fmt.Errorf("%w: %v", ErrBackEnd, err)
+		return fmt.Errorf("%w: %v", services.ErrServiceIntenal, err)
 	case "notFound":
 		return fmt.Errorf("%w: %v", services.ErrObjectNotExist, err)
 	case "insufficientFilePermissions", "appNotAuthorizedToFile":
