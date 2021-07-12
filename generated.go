@@ -6,49 +6,18 @@ import (
 	"io"
 
 	"github.com/beyondstorage/go-storage/v4/pkg/credential"
-	"github.com/beyondstorage/go-storage/v4/pkg/endpoint"
 	"github.com/beyondstorage/go-storage/v4/pkg/httpclient"
 	"github.com/beyondstorage/go-storage/v4/services"
 	. "github.com/beyondstorage/go-storage/v4/types"
 )
 
 var _ credential.Provider
-var _ endpoint.Value
 var _ Storager
 var _ services.ServiceError
 var _ httpclient.Options
 
 // Type is the type for gdrive
 const Type = "gdrive"
-
-// ObjectMetadata stores service metadata for object.
-//
-// Deprecated: Use ObjectSystemMetadata instead.
-type ObjectMetadata struct {
-}
-
-// GetObjectMetadata will get ObjectMetadata from Object.
-//
-// - This function should not be called by service implementer.
-// - The returning ObjectMetadata is read only and should not be modified.
-//
-// Deprecated: Use GetObjectSystemMetadata instead.
-func GetObjectMetadata(o *Object) ObjectMetadata {
-	om, ok := o.GetServiceMetadata()
-	if ok {
-		return om.(ObjectMetadata)
-	}
-	return ObjectMetadata{}
-}
-
-// setObjectMetadata will set ObjectMetadata into Object.
-//
-// - This function should only be called once, please make sure all data has been written before set.
-//
-// Deprecated: Use setObjectSystemMetadata instead.
-func setObjectMetadata(o *Object, om ObjectMetadata) {
-	o.SetServiceMetadata(om)
-}
 
 // ObjectSystemMetadata stores system metadata for object.
 type ObjectSystemMetadata struct {
@@ -120,28 +89,6 @@ var (
 )
 
 type StorageFeatures struct {
-	// Deprecated: This field has been deprecated by GSP-109, planned be removed in v4.3.0.
-	LooseOperationAll bool
-	// Deprecated: This field has been deprecated by GSP-109, planned be removed in v4.3.0.
-	LooseOperationCreate bool
-	// Deprecated: This field has been deprecated by GSP-109, planned be removed in v4.3.0.
-	LooseOperationDelete bool
-	// Deprecated: This field has been deprecated by GSP-109, planned be removed in v4.3.0.
-	LooseOperationList bool
-	// Deprecated: This field has been deprecated by GSP-109, planned be removed in v4.3.0.
-	LooseOperationMetadata bool
-	// Deprecated: This field has been deprecated by GSP-109, planned be removed in v4.3.0.
-	LooseOperationRead bool
-	// Deprecated: This field has been deprecated by GSP-109, planned be removed in v4.3.0.
-	LooseOperationStat bool
-	// Deprecated: This field has been deprecated by GSP-109, planned be removed in v4.3.0.
-	LooseOperationWrite bool
-
-	// Deprecated: This field has been deprecated by GSP-109, planned be removed in v4.3.0.
-	VirtualOperationAll bool
-
-	// Deprecated: This field has been deprecated by GSP-109, planned be removed in v4.3.0.
-	VirtualPairAll bool
 }
 
 // pairStorageNew is the parsed struct
@@ -149,7 +96,13 @@ type pairStorageNew struct {
 	pairs []Pair
 
 	// Required pairs
+	HasCredential bool
+	Credential    string
+	HasName       bool
+	Name          string
 	// Optional pairs
+	HasWorkDir bool
+	WorkDir    string
 }
 
 // parsePairStorageNew will parse Pair slice into *pairStorageNew
@@ -161,8 +114,32 @@ func parsePairStorageNew(opts []Pair) (pairStorageNew, error) {
 	for _, v := range opts {
 		switch v.Key {
 		// Required pairs
+		case "credential":
+			if result.HasCredential {
+				continue
+			}
+			result.HasCredential = true
+			result.Credential = v.Value.(string)
+		case "name":
+			if result.HasName {
+				continue
+			}
+			result.HasName = true
+			result.Name = v.Value.(string)
 		// Optional pairs
+		case "work_dir":
+			if result.HasWorkDir {
+				continue
+			}
+			result.HasWorkDir = true
+			result.WorkDir = v.Value.(string)
 		}
+	}
+	if !result.HasCredential {
+		return pairStorageNew{}, services.PairRequiredError{Keys: []string{"credential"}}
+	}
+	if !result.HasName {
+		return pairStorageNew{}, services.PairRequiredError{Keys: []string{"name"}}
 	}
 
 	return result, nil
