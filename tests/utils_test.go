@@ -5,8 +5,8 @@ import (
 	"testing"
 
 	"github.com/beyondstorage/go-service-gdrive"
-	"github.com/beyondstorage/go-storage/v4/types"
 	ps "github.com/beyondstorage/go-storage/v4/pairs"
+	"github.com/beyondstorage/go-storage/v4/types"
 
 	"github.com/google/uuid"
 )

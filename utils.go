@@ -15,9 +15,9 @@ import (
 
 // Storage is the example client.
 type Storage struct {
-	name    string
-	workDir string
-	service *drive.Service
+	name         string
+	workDir      string
+	service      *drive.Service
 	defaultPairs DefaultStoragePairs
 	features     StorageFeatures
 
