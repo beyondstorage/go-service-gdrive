@@ -23,7 +23,10 @@ func (s *Storage) list(ctx context.Context, path string, opt pairStorageList) (o
 }
 
 func (s *Storage) metadata(opt pairStorageMetadata) (meta *StorageMeta) {
-	panic("not implemented")
+	meta = NewStorageMeta()
+	meta.Name = s.name
+	meta.WorkDir = s.workDir
+	return meta
 }
 
 func (s *Storage) read(ctx context.Context, path string, w io.Writer, opt pairStorageRead) (n int64, err error) {
