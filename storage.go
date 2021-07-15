@@ -8,7 +8,10 @@ import (
 )
 
 func (s *Storage) create(path string, opt pairStorageCreate) (o *Object) {
-	panic("not implemented")
+	o = s.newObject(false)
+	o.ID = s.getAbsPath(path)
+	o.Path = path
+	return o
 }
 
 func (s *Storage) delete(ctx context.Context, path string, opt pairStorageDelete) (err error) {
