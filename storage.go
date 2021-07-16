@@ -16,7 +16,12 @@ func (s *Storage) create(path string, opt pairStorageCreate) (o *Object) {
 }
 
 func (s *Storage) delete(ctx context.Context, path string, opt pairStorageDelete) (err error) {
-	panic("not implemented")
+	fileId := s.pathToId(path)
+	err = s.service.Files.Delete(fileId).Do()
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 func (s *Storage) list(ctx context.Context, path string, opt pairStorageList) (oi *ObjectIterator, err error) {
