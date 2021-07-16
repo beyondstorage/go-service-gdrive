@@ -1,9 +1,9 @@
 package gdrive
 
 import (
-	"strings"
 	"context"
 	"fmt"
+	"strings"
 
 	ps "github.com/beyondstorage/go-storage/v4/pairs"
 	"github.com/beyondstorage/go-storage/v4/pkg/credential"
@@ -134,4 +134,14 @@ func (s *Storage) getAbsPath(path string) string {
 func (s *Storage) getRelPath(path string) string {
 	prefix := strings.TrimPrefix(s.workDir, "/")
 	return strings.TrimPrefix(path, prefix)
+}
+
+// getFileName will get a file's name without path
+func (s *Storage) getFileName(path string) string {
+	if strings.Contains(path, "/") {
+		tmp := strings.Split(path, "/")
+		return tmp[len(tmp)-1]
+	} else {
+		return path
+	}
 }
