@@ -1,41 +1,31 @@
 - Author: Jun jun@junz.org
 - Start Date: 2021-7-18
-- RFC PR: [beyondstorage/go-storage#0](https://github.com/beyondstorage/go-storage/issues/0)
-- Tracking Issue: [beyondstorage/go-storage#0](https://github.com/beyondstorage/go-storage/issues/0)
+- RFC PR: [beyondstorage/go-service-gdrive#14](https://github.com/beyondstorage/go-service-gdrive/issues/14)
+- Tracking Issue: [beyondstorage/go-service-gdrive#15](https://github.com/beyondstorage/go-service-gdrive/issues/15)
 
 # GSP-14: Gdrive for go-storage design
 
-- Updates: (delete this part if not applicable)
-  - [GSP-20](./20-abc): Deletes something
-- Updated By: (delete this part if not applicable)
-  - [GSP-10](./10-do-be-do-be-do): Adds something
-  - [GSP-1000](./1000-lalala): Deprecates this RFC
-
 ## Background
 
-Explain why we are doing this.
+Google drive API has so many different notions that differs from `go-storage`, and we have briefly discussed in [Gdrive use FileId to manipulate data instead of file name #11](https://github.com/beyondstorage/go-service-gdrive/issues/11). Now I would like to start a RFC so that we can make all things more clear.
 
-Related issues and early discussions can be linked, but the RFC should try to be self-contained if possible.
+In Google drive API, `FileID` is a critical attribute of a file(or directory). We will use it to manipulate data instead of by path. In fact, path is very trivial in gdrive, and we can create files with the same name in the same location. In other words, path can be duplicate in gdrive. This behavior can cause some problems to our path based API.
 
 ## Proposal
 
-<proposal's content>
+**We manually stipulate that every path is unique.** When users try to call `Write` to an existing file, we update it's content instead of creating another file with the same name.
 
-## Rationale
-
-<proposal's rationale content, other implementations>
-
-Possible content:
-
-- Design Principles
-- Drawbacks
-- Alternative implementations and comparison
-- Possible Q&As
-
-## Compatibility
-
-<proposal's compatibility statement>
+**We will do a conversion between path and `FileID`.** In this way, every path can be converted to `FileID`, so we are able to build a good bridge between `go-storage` API and gdrive API.
 
 ## Implementation
 
-Explain what steps should be done to implement this proposal.
+When users try to call `Write("foo/bar/test.txt")`, first we use `pathToId` to try to convert the path to `FileID`. If it fails, then it means that this file doesn't exist, and we should create one. Then we can create folder `foo` , `bar`, and last the file `test.txt`. 
+
+Our significant point `pathToId` can be implement like this:
+
+If the file is in the root folder, then we just do a simple search by using `drive.service.Files.List().Q(searchArgs).Do()`. The return value type is `*drive.File`, and it's attribute `ID` is what we need.
+
+But if the file path is like `foo/bar/demo.txt`, it would be a little complex.
+
+First, we get the `FileID` of directory `foo` like what we previously do, then we can use this `FileID` to list all of it's content. By this way, we can find a directory named `bar` and it's `FileID`. At last, we just repeat what we did before, and get the `FileID` we want. 
+
