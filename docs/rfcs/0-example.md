@@ -1,15 +1,15 @@
 - Author: (fill me in with `name <mail>`, e.g., Xuanwo <github@xuanwo.io>)
 - Start Date: (fill me in with today's date, YYYY-MM-DD)
-- RFC PR: [beyondstorage/go-storage#0](https://github.com/beyondstorage/go-storage/issues/0)
-- Tracking Issue: [beyondstorage/go-storage#0](https://github.com/beyondstorage/go-storage/issues/0)
+- RFC PR: [beyondstorage/go-service-gdrive#0](https://github.com/beyondstorage/go-service-gdrive/issues/0)
+- Tracking Issue: [beyondstorage/go-service-gdrive#0](https://github.com/beyondstorage/go-service-gdrive/issues/0)
 
-# GSP-0: <proposal name>
+# RFC-0: <proposal name>
 
 - Updates: (delete this part if not applicable)
-  - [GSP-20](./20-abc): Deletes something
+  - [RFC-20](./20-abc): Deletes something
 - Updated By: (delete this part if not applicable)
-  - [GSP-10](./10-do-be-do-be-do): Adds something
-  - [GSP-1000](./1000-lalala): Deprecates this RFC
+  - [RFC-10](./10-do-be-do-be-do): Adds something
+  - [RFC-1000](./1000-lalala): Deprecates this RFC
 
 ## Background
 

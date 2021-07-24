@@ -3,7 +3,7 @@
 - RFC PR: [beyondstorage/go-service-gdrive#14](https://github.com/beyondstorage/go-service-gdrive/issues/14)
 - Tracking Issue: [beyondstorage/go-service-gdrive#15](https://github.com/beyondstorage/go-service-gdrive/issues/15)
 
-# GSP-14: Gdrive for go-storage design
+# RFC-14: Gdrive for go-storage design
 
 ## Background
 
