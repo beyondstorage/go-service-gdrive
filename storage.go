@@ -6,6 +6,7 @@ import (
 	"github.com/beyondstorage/go-storage/v4/services"
 	"io"
 	"strings"
+	"path/filepath"
 
 	"github.com/beyondstorage/go-storage/v4/pkg/iowrap"
 
@@ -215,18 +216,33 @@ func (s *Storage) write(ctx context.Context, path string, r io.Reader, size int6
 	if opt.HasIoCallback {
 		r = iowrap.CallbackReader(r, opt.IoCallback)
 	}
+
 	fileId, err := s.pathToId(ctx, path)
+
 	if err != nil {
 		// upload
-		file := &drive.File{Name: s.getFileName(path)}
+		dirs, fileName :=filepath.Split(path)
+
+		if dirs != "" {
+			_, err = s.createDir(ctx,dirs,pairStorageCreateDir{})
+			if err != nil {
+				return 0, err
+			}
+
+		}
+
+		file := &drive.File{Name: fileName}
 		_, err = s.service.Files.Create(file).Context(ctx).Media(r).Do()
+
 		if err != nil {
 			return 0, err
 		}
+
 	} else {
 		// update
 		newFile := &drive.File{Name: s.getFileName(path)}
 		_, err = s.service.Files.Update(fileId, newFile).Context(ctx).Media(r).Do()
+
 		if err != nil {
 			return 0, err
 		}
