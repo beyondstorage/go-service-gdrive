@@ -26,8 +26,8 @@ func (s *Storage) createDir(ctx context.Context, path string, opt pairStorageCre
 	path = s.getAbsPath(path)
 	pathUnits := strings.Split(path, "/")
 	parentsId := "root"
-	for i := 0; i < len(pathUnits); i++ {
-		parentsId, err = s.mkDir(ctx, parentsId, pathUnits[i])
+	for _, v := range pathUnits {
+		parentsId, err = s.mkDir(ctx, parentsId, v)
 		if err != nil {
 			return nil, err
 		}
@@ -137,16 +137,18 @@ func (s *Storage) nextObjectPage(ctx context.Context, page *ObjectPage) error {
 // TODO: add cache support
 // pathToId converts path to fileId, as we talked in RFC-14.
 // Ref: https://github.com/beyondstorage/go-service-gdrive/blob/master/docs/rfcs/14-gdrive-for-go-storage-design.md
-// If success, we will return the fileId of the path we passing, and nil for sure.
-// But if the path is not exist, we will return an empty string and error.
+// Behavior:
+// err represents the error handled in pathToId
+// fileId represents the results: fileId empty means the path is not exist, otherwise it's the fileId of input path
 func (s *Storage) pathToId(ctx context.Context, path string) (fileId string, err error) {
 	absPath := s.getAbsPath(path)
 	pathUnits := strings.Split(absPath, "/")
 	fileId = "root"
 	// Traverse the whole path, break the loop if we fails at one search
-	for i := 0; i < len(pathUnits); i++ {
-		fileId, err = s.searchContentInDir(ctx, fileId, pathUnits[i])
-		if fileId == "" {
+	for _, v := range pathUnits {
+		fileId, err = s.searchContentInDir(ctx, fileId, v)
+
+		if fileId == "" || err != nil {
 			break
 		}
 	}
