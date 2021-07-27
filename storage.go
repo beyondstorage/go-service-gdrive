@@ -3,18 +3,18 @@ package gdrive
 import (
 	"context"
 	"fmt"
-	"github.com/beyondstorage/go-storage/v4/services"
 	"io"
 	"path/filepath"
 	"strings"
 
-	"github.com/beyondstorage/go-storage/v4/pkg/iowrap"
-
-	. "github.com/beyondstorage/go-storage/v4/types"
 	"google.golang.org/api/drive/v3"
+
+	"github.com/beyondstorage/go-storage/v4/pkg/iowrap"
+	"github.com/beyondstorage/go-storage/v4/services"
+	. "github.com/beyondstorage/go-storage/v4/types"
 )
 
-const DirectoryMimeType = "application/vnd.google-apps.folder"
+const directoryMimeType = "application/vnd.google-apps.folder"
 
 func (s *Storage) create(path string, opt pairStorageCreate) (o *Object) {
 	o = s.newObject(false)
@@ -93,7 +93,7 @@ func (s *Storage) mkDir(ctx context.Context, parents string, dirName string) (st
 	dir := &drive.File{
 		Name:     dirName,
 		Parents:  []string{parents},
-		MimeType: DirectoryMimeType,
+		MimeType: directoryMimeType,
 	}
 	f, err := s.service.Files.Create(dir).Context(ctx).Do()
 	if err != nil {
@@ -123,7 +123,7 @@ func (s *Storage) nextObjectPage(ctx context.Context, page *ObjectPage) error {
 		// There is no way to get the path of the file directly, we have to do this
 		o.Path = input.path + "/" + f.Name
 		switch f.MimeType {
-		case DirectoryMimeType:
+		case directoryMimeType:
 			o.Mode = ModeDir
 		default:
 			o.Mode = ModeRead
