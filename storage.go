@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"github.com/beyondstorage/go-storage/v4/services"
 	"io"
-	"strings"
 	"path/filepath"
+	"strings"
 
 	"github.com/beyondstorage/go-storage/v4/pkg/iowrap"
 
@@ -221,10 +221,10 @@ func (s *Storage) write(ctx context.Context, path string, r io.Reader, size int6
 
 	if err != nil {
 		// upload
-		dirs, fileName :=filepath.Split(path)
+		dirs, fileName := filepath.Split(path)
 
 		if dirs != "" {
-			_, err = s.createDir(ctx,dirs,pairStorageCreateDir{})
+			_, err = s.createDir(ctx, dirs, pairStorageCreateDir{})
 			if err != nil {
 				return 0, err
 			}
