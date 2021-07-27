@@ -3,6 +3,7 @@ package gdrive
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	ps "github.com/beyondstorage/go-storage/v4/pairs"
 	"github.com/beyondstorage/go-storage/v4/pkg/credential"
@@ -22,6 +23,7 @@ type Storage struct {
 	features     StorageFeatures
 
 	types.UnimplementedStorager
+	types.UnimplementedDirer
 }
 
 // String implements Storager.String
@@ -116,5 +118,31 @@ func (s *Storage) formatError(op string, err error, path ...string) error {
 		Err:      formatError(err),
 		Storager: s,
 		Path:     path,
+	}
+}
+
+func (s *Storage) newObject(done bool) *types.Object {
+	return types.NewObject(s, done)
+}
+
+// getAbsPath will calculate object storage's abs path
+func (s *Storage) getAbsPath(path string) string {
+	prefix := strings.TrimPrefix(s.workDir, "/")
+	return prefix + path
+}
+
+// getRelPath will get object storage's rel path.
+func (s *Storage) getRelPath(path string) string {
+	prefix := strings.TrimPrefix(s.workDir, "/")
+	return strings.TrimPrefix(path, prefix)
+}
+
+// getFileName will get a file's name without path
+func (s *Storage) getFileName(path string) string {
+	if strings.Contains(path, "/") {
+		tmp := strings.Split(path, "/")
+		return tmp[len(tmp)-1]
+	} else {
+		return path
 	}
 }

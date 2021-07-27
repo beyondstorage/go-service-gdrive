@@ -1,6 +1,7 @@
 name = "gdrive"
 
 [namespace.storage]
+implement = ["direr"]
 
 [namespace.storage.new]
 required = ["name","credential"]
