@@ -23,6 +23,7 @@ type Storage struct {
 	features     StorageFeatures
 
 	types.UnimplementedStorager
+	types.UnimplementedDirer
 }
 
 // String implements Storager.String
