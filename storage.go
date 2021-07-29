@@ -27,11 +27,16 @@ func (s *Storage) createDir(ctx context.Context, path string, opt pairStorageCre
 	path = s.getAbsPath(path)
 	pathUnits := strings.Split(path, "/")
 	parentsId := "root"
+	cachePath := ""
+
 	for _, v := range pathUnits {
 		parentsId, err = s.mkDir(ctx, parentsId, v)
 		if err != nil {
 			return nil, err
 		}
+
+		cachePath = cachePath + "/" + v
+		cache.SetWithTTL(cachePath, parentsId, cost, expireTime)
 	}
 
 	o = s.newObject(true)
@@ -135,7 +140,6 @@ func (s *Storage) nextObjectPage(ctx context.Context, page *ObjectPage) error {
 	return nil
 }
 
-// TODO: add cache support
 // pathToId converts path to fileId, as we talked in RFC-14.
 // Ref: https://github.com/beyondstorage/go-service-gdrive/blob/master/docs/rfcs/14-gdrive-for-go-storage-design.md
 // Behavior:
@@ -143,6 +147,12 @@ func (s *Storage) nextObjectPage(ctx context.Context, page *ObjectPage) error {
 // fileId represents the results: fileId empty means the path is not exist, otherwise it's the fileId of input path
 func (s *Storage) pathToId(ctx context.Context, path string) (fileId string, err error) {
 	absPath := s.getAbsPath(path)
+
+	id, found := cache.Get(absPath)
+	if found {
+		return fmt.Sprintf("%v", id), nil
+	}
+
 	pathUnits := strings.Split(absPath, "/")
 	fileId = "root"
 	// Traverse the whole path, break the loop if we fails at one search
@@ -211,6 +221,12 @@ func (s *Storage) stat(ctx context.Context, path string, opt pairStorageStat) (o
 // First we need make sure this file is not exist.
 // If it is, then we upload it, or we will overwrite it.
 func (s *Storage) write(ctx context.Context, path string, r io.Reader, size int64, opt pairStorageWrite) (n int64, err error) {
+
+	err = makeCache()
+	if err != nil {
+		return 0, err
+	}
+
 	r = io.LimitReader(r, size)
 
 	if opt.HasIoCallback {
@@ -232,11 +248,13 @@ func (s *Storage) write(ctx context.Context, path string, r io.Reader, size int6
 		}
 
 		file := &drive.File{Name: fileName}
-		_, err = s.service.Files.Create(file).Context(ctx).Media(r).Do()
+		f, err := s.service.Files.Create(file).Context(ctx).Media(r).Do()
 
 		if err != nil {
 			return 0, err
 		}
+
+		cache.SetWithTTL(path, f.Id, cost, expireTime)
 
 	} else {
 		// update
