@@ -27,7 +27,7 @@ func (s *Storage) createDir(ctx context.Context, path string, opt pairStorageCre
 	path = s.getAbsPath(path)
 	pathUnits := strings.Split(path, "/")
 	parentsId := "root"
-	f := s.cacheDir()
+	currentPath := ""
 
 	for _, v := range pathUnits {
 		parentsId, err = s.mkDir(ctx, parentsId, v)
@@ -35,7 +35,13 @@ func (s *Storage) createDir(ctx context.Context, path string, opt pairStorageCre
 			return nil, err
 		}
 
-		f(v, parentsId)
+		if currentPath == "" {
+			currentPath = v
+		} else {
+			currentPath = currentPath + "/" + v
+		}
+
+		s.setCache(currentPath, parentsId)
 
 	}
 
@@ -46,28 +52,6 @@ func (s *Storage) createDir(ctx context.Context, path string, opt pairStorageCre
 
 	return o, nil
 
-}
-
-
-func (s *Storage) cacheDir() (func(string, string) bool) {
-
-	cachePath := ""
-
-	fn := func(pathUnit string, fileId string) (success bool) {
-
-		if cachePath == "" {
-			cachePath = pathUnit
-		}else {
-			cachePath = cachePath + "/" + pathUnit
-		}
-
-	success = s.setCache(cachePath, fileId)
-
-	return success
-
-	}
-
-	return fn
 }
 
 func (s *Storage) delete(ctx context.Context, path string, opt pairStorageDelete) (err error) {
