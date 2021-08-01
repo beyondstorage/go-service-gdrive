@@ -27,7 +27,7 @@ func (s *Storage) createDir(ctx context.Context, path string, opt pairStorageCre
 	path = s.getAbsPath(path)
 	pathUnits := strings.Split(path, "/")
 	parentsId := "root"
-	cachePath := ""
+	f := s.cacheDir()
 
 	for _, v := range pathUnits {
 		parentsId, err = s.mkDir(ctx, parentsId, v)
@@ -35,8 +35,8 @@ func (s *Storage) createDir(ctx context.Context, path string, opt pairStorageCre
 			return nil, err
 		}
 
-		cachePath = cachePath + "/" + v
-		cache.SetWithTTL(cachePath, parentsId, cost, expireTime)
+		f(v, parentsId)
+
 	}
 
 	o = s.newObject(true)
@@ -46,6 +46,28 @@ func (s *Storage) createDir(ctx context.Context, path string, opt pairStorageCre
 
 	return o, nil
 
+}
+
+
+func (s *Storage) cacheDir() (func(string, string) bool) {
+
+	cachePath := ""
+
+	fn := func(pathUnit string, fileId string) (success bool) {
+
+		if cachePath == "" {
+			cachePath = pathUnit
+		}else {
+			cachePath = cachePath + "/" + pathUnit
+		}
+
+	success = s.setCache(cachePath, fileId)
+
+	return success
+
+	}
+
+	return fn
 }
 
 func (s *Storage) delete(ctx context.Context, path string, opt pairStorageDelete) (err error) {
@@ -148,9 +170,9 @@ func (s *Storage) nextObjectPage(ctx context.Context, page *ObjectPage) error {
 func (s *Storage) pathToId(ctx context.Context, path string) (fileId string, err error) {
 	absPath := s.getAbsPath(path)
 
-	id, found := cache.Get(absPath)
+	fileId, found := s.getCache(path)
 	if found {
-		return fmt.Sprintf("%v", id), nil
+		return fileId, nil
 	}
 
 	pathUnits := strings.Split(absPath, "/")
@@ -222,11 +244,6 @@ func (s *Storage) stat(ctx context.Context, path string, opt pairStorageStat) (o
 // If it is, then we upload it, or we will overwrite it.
 func (s *Storage) write(ctx context.Context, path string, r io.Reader, size int64, opt pairStorageWrite) (n int64, err error) {
 
-	err = makeCache()
-	if err != nil {
-		return 0, err
-	}
-
 	r = io.LimitReader(r, size)
 
 	if opt.HasIoCallback {
@@ -254,7 +271,7 @@ func (s *Storage) write(ctx context.Context, path string, r io.Reader, size int6
 			return 0, err
 		}
 
-		cache.SetWithTTL(path, f.Id, cost, expireTime)
+		s.setCache(path, f.Id)
 
 	} else {
 		// update
