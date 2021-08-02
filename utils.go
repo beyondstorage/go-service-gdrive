@@ -5,13 +5,24 @@ import (
 	"fmt"
 	"strings"
 
+	"google.golang.org/api/drive/v3"
+	"google.golang.org/api/googleapi"
+	"google.golang.org/api/option"
+
+	. "github.com/dgraph-io/ristretto"
+
 	ps "github.com/beyondstorage/go-storage/v4/pairs"
 	"github.com/beyondstorage/go-storage/v4/pkg/credential"
 	"github.com/beyondstorage/go-storage/v4/services"
 	"github.com/beyondstorage/go-storage/v4/types"
-	"google.golang.org/api/drive/v3"
-	"google.golang.org/api/googleapi"
-	"google.golang.org/api/option"
+)
+
+const (
+	numCounters = 1e7     // number of keys to track frequency of (10M).
+	maxCost     = 1 << 30 // maximum cost of cache (1GB).
+	bufferItems = 64      // number of keys per Get buffer.
+	cost        = 1
+	expireTime  = 100
 )
 
 // Storage is the example client.
@@ -19,6 +30,7 @@ type Storage struct {
 	name         string
 	workDir      string
 	service      *drive.Service
+	cache        *Cache
 	defaultPairs DefaultStoragePairs
 	features     StorageFeatures
 
@@ -55,6 +67,14 @@ func newStorager(pairs ...types.Pair) (store *Storage, err error) {
 		name:    opt.Name,
 		workDir: "/",
 	}
+
+	// Init cache for storager
+	ch, err := initCache(numCounters, maxCost, bufferItems)
+	if err != nil {
+		return nil, err
+	}
+	store.cache = ch
+
 	if opt.HasWorkDir {
 		store.workDir = opt.WorkDir
 	}
@@ -145,4 +165,31 @@ func (s *Storage) getFileName(path string) string {
 	} else {
 		return path
 	}
+}
+
+func initCache(nc int64, mc int64, bi int64) (cache *Cache, err error) {
+	config := &Config{
+		NumCounters: nc,
+		MaxCost:     mc,
+		BufferItems: bi,
+	}
+
+	cache, err = NewCache(config)
+
+	if err != nil {
+		return nil, err
+	}
+	return cache, nil
+}
+
+func (s *Storage) setCache(path string, fileId string) {
+	s.cache.SetWithTTL(path, fileId, cost, expireTime)
+}
+
+func (s *Storage) getCache(path string) (string, bool) {
+	id, found := s.cache.Get(path)
+	if found {
+		return id.(string), true
+	}
+	return "", false
 }

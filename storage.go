@@ -27,6 +27,7 @@ func (s *Storage) createDir(ctx context.Context, path string, opt pairStorageCre
 	path = s.getAbsPath(path)
 	pathUnits := strings.Split(path, "/")
 	parentsId := "root"
+
 	for _, v := range pathUnits {
 		parentsId, err = s.mkDir(ctx, parentsId, v)
 		if err != nil {
@@ -135,16 +136,22 @@ func (s *Storage) nextObjectPage(ctx context.Context, page *ObjectPage) error {
 	return nil
 }
 
-// TODO: add cache support
-// pathToId converts path to fileId, as we talked in RFC-14.
+// pathToId converts path to fileId, as we discussed in RFC-14.
 // Ref: https://github.com/beyondstorage/go-service-gdrive/blob/master/docs/rfcs/14-gdrive-for-go-storage-design.md
 // Behavior:
 // err represents the error handled in pathToId
 // fileId represents the results: fileId empty means the path is not exist, otherwise it's the fileId of input path
 func (s *Storage) pathToId(ctx context.Context, path string) (fileId string, err error) {
 	absPath := s.getAbsPath(path)
+
+	fileId, found := s.getCache(path)
+	if found {
+		return fileId, nil
+	}
+
 	pathUnits := strings.Split(absPath, "/")
 	fileId = "root"
+	cacheCurrentPath := ""
 	// Traverse the whole path, break the loop if we fails at one search
 	for _, v := range pathUnits {
 		fileId, err = s.searchContentInDir(ctx, fileId, v)
@@ -152,6 +159,14 @@ func (s *Storage) pathToId(ctx context.Context, path string) (fileId string, err
 		if fileId == "" || err != nil {
 			break
 		}
+
+		if cacheCurrentPath == "" {
+			cacheCurrentPath = v
+		} else {
+			cacheCurrentPath += "/" + v
+		}
+
+		s.setCache(cacheCurrentPath, fileId)
 	}
 
 	if err != nil {
@@ -211,6 +226,7 @@ func (s *Storage) stat(ctx context.Context, path string, opt pairStorageStat) (o
 // First we need make sure this file is not exist.
 // If it is, then we upload it, or we will overwrite it.
 func (s *Storage) write(ctx context.Context, path string, r io.Reader, size int64, opt pairStorageWrite) (n int64, err error) {
+
 	r = io.LimitReader(r, size)
 
 	if opt.HasIoCallback {
@@ -232,12 +248,11 @@ func (s *Storage) write(ctx context.Context, path string, r io.Reader, size int6
 		}
 
 		file := &drive.File{Name: fileName}
-		_, err = s.service.Files.Create(file).Context(ctx).Media(r).Do()
+		_, err := s.service.Files.Create(file).Context(ctx).Media(r).Do()
 
 		if err != nil {
 			return 0, err
 		}
-
 	} else {
 		// update
 		newFile := &drive.File{Name: s.getFileName(path)}
