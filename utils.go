@@ -189,7 +189,7 @@ func (s *Storage) setCache(path string, fileId string) {
 func (s *Storage) getCache(path string) (string, bool) {
 	id, found := s.cache.Get(path)
 	if found {
-		return fmt.Sprintf("%v", id), true
+		return id.(string), true
 	}
 	return "", false
 }

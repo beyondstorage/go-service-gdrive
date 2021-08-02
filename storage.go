@@ -162,7 +162,7 @@ func (s *Storage) pathToId(ctx context.Context, path string) (fileId string, err
 
 		if cacheCurrentPath == "" {
 			cacheCurrentPath = v
-		}else {
+		} else {
 			cacheCurrentPath += "/" + v
 		}
 
@@ -253,8 +253,6 @@ func (s *Storage) write(ctx context.Context, path string, r io.Reader, size int6
 		if err != nil {
 			return 0, err
 		}
-
-
 	} else {
 		// update
 		newFile := &drive.File{Name: s.getFileName(path)}
