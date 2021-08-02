@@ -136,7 +136,7 @@ func (s *Storage) nextObjectPage(ctx context.Context, page *ObjectPage) error {
 	return nil
 }
 
-// pathToId converts path to fileId, as we talked in RFC-14.
+// pathToId converts path to fileId, as we discussed in RFC-14.
 // Ref: https://github.com/beyondstorage/go-service-gdrive/blob/master/docs/rfcs/14-gdrive-for-go-storage-design.md
 // Behavior:
 // err represents the error handled in pathToId
