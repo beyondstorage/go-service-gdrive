@@ -27,22 +27,12 @@ func (s *Storage) createDir(ctx context.Context, path string, opt pairStorageCre
 	path = s.getAbsPath(path)
 	pathUnits := strings.Split(path, "/")
 	parentsId := "root"
-	currentPath := ""
 
 	for _, v := range pathUnits {
 		parentsId, err = s.mkDir(ctx, parentsId, v)
 		if err != nil {
 			return nil, err
 		}
-
-		if currentPath == "" {
-			currentPath = v
-		} else {
-			currentPath = currentPath + "/" + v
-		}
-
-		s.setCache(currentPath, parentsId)
-
 	}
 
 	o = s.newObject(true)
@@ -161,6 +151,7 @@ func (s *Storage) pathToId(ctx context.Context, path string) (fileId string, err
 
 	pathUnits := strings.Split(absPath, "/")
 	fileId = "root"
+	cacheCurrentPath := ""
 	// Traverse the whole path, break the loop if we fails at one search
 	for _, v := range pathUnits {
 		fileId, err = s.searchContentInDir(ctx, fileId, v)
@@ -168,6 +159,14 @@ func (s *Storage) pathToId(ctx context.Context, path string) (fileId string, err
 		if fileId == "" || err != nil {
 			break
 		}
+
+		if cacheCurrentPath == "" {
+			cacheCurrentPath = v
+		}else {
+			cacheCurrentPath += "/" + v
+		}
+
+		s.setCache(cacheCurrentPath, fileId)
 	}
 
 	if err != nil {
@@ -249,13 +248,12 @@ func (s *Storage) write(ctx context.Context, path string, r io.Reader, size int6
 		}
 
 		file := &drive.File{Name: fileName}
-		f, err := s.service.Files.Create(file).Context(ctx).Media(r).Do()
+		_, err := s.service.Files.Create(file).Context(ctx).Media(r).Do()
 
 		if err != nil {
 			return 0, err
 		}
 
-		s.setCache(path, f.Id)
 
 	} else {
 		// update
