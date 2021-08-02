@@ -182,13 +182,8 @@ func initCache(nc int64, mc int64, bi int64) (cache *Cache, err error) {
 	return cache, nil
 }
 
-func (s *Storage) setCache(path string, fileId string) (success bool) {
-	success = s.cache.SetWithTTL(path, fileId, cost, expireTime)
-	if success {
-		return true
-	} else {
-		return false
-	}
+func (s *Storage) setCache(path string, fileId string) {
+	s.cache.SetWithTTL(path, fileId, cost, expireTime)
 }
 
 func (s *Storage) getCache(path string) (string, bool) {
