@@ -3,8 +3,13 @@ package gdrive
 import (
 	"context"
 	"fmt"
+	"io/ioutil"
+	"log"
+	"net/http"
 	"strings"
 
+	"golang.org/x/oauth2"
+	"golang.org/x/oauth2/google"
 	"google.golang.org/api/drive/v3"
 	"google.golang.org/api/googleapi"
 	"google.golang.org/api/option"
@@ -83,18 +88,25 @@ func newStorager(pairs ...types.Pair) (store *Storage, err error) {
 		return nil, err
 	}
 
-	//TODO: To make it easier, we just support authorized it
-	//via API key, maybe we can support OAuth in the future.
-	var token string
+	ctx := context.Background()
+
+	var cliOpt option.ClientOption
+
+	// Google drive only support authorized by Oauth2
+	// Ref:https://developers.google.com/drive/api/v3/about-auth
 	switch cred.Protocol() {
-	case credential.ProtocolAPIKey:
-		token = cred.APIKey()
+	case credential.ProtocolFile:
+		client, err := getClient(ctx, cred.File())
+		if err != nil {
+			return nil, err
+		}
+		cliOpt = option.WithHTTPClient(client)
 	default:
 		return nil, services.PairUnsupportedError{Pair: ps.WithCredential(opt.Credential)}
 	}
 
-	ctx := context.Background()
-	store.service, err = drive.NewService(ctx, option.WithAPIKey(token))
+	store.service, err = drive.NewService(ctx, cliOpt)
+
 	return store, nil
 }
 
@@ -192,4 +204,32 @@ func (s *Storage) getCache(path string) (string, bool) {
 		return id.(string), true
 	}
 	return "", false
+}
+
+func getClient(ctx context.Context, configFile string) (*http.Client, error) {
+	config, err := ioutil.ReadFile(configFile)
+	if err != nil {
+		return nil, err
+	}
+	conf, err := google.ConfigFromJSON(config, drive.DriveScope)
+
+	if err != nil {
+		return nil, err
+	}
+
+	authURL := conf.AuthCodeURL("state-token", oauth2.AccessTypeOffline)
+	fmt.Printf("Go to the following link in your browser then type the "+
+		"authorization code: \n%v\n", authURL)
+	fmt.Printf("Enter Verfication Code:\n")
+
+	var code string
+	if _, err := fmt.Scan(&code); err != nil {
+		log.Fatalf("Unable to read authorization code %v", err)
+	}
+
+	tok, err := conf.Exchange(ctx, code)
+	if err != nil {
+		log.Fatalf("Unable to retrieve token from web %v", err)
+	}
+	return conf.Client(ctx, tok), nil
 }
