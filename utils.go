@@ -2,9 +2,13 @@ package gdrive
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
+	"io/ioutil"
 	"strings"
 
+	"golang.org/x/oauth2"
+	"golang.org/x/oauth2/google"
 	"google.golang.org/api/drive/v3"
 	"google.golang.org/api/googleapi"
 	"google.golang.org/api/option"
@@ -13,6 +17,7 @@ import (
 
 	ps "github.com/beyondstorage/go-storage/v4/pairs"
 	"github.com/beyondstorage/go-storage/v4/pkg/credential"
+	"github.com/beyondstorage/go-storage/v4/pkg/httpclient"
 	"github.com/beyondstorage/go-storage/v4/services"
 	"github.com/beyondstorage/go-storage/v4/types"
 )
@@ -79,23 +84,50 @@ func newStorager(pairs ...types.Pair) (store *Storage, err error) {
 	if opt.HasWorkDir {
 		store.workDir = opt.WorkDir
 	}
-	cred, err := credential.Parse(opt.Credential)
+
+	ctx := context.Background()
+
+	// Google drive only support authorized by Oauth2
+	// Ref:https://developers.google.com/drive/api/v3/about-auth
+	hc := httpclient.New(opt.HTTPClientOptions)
+
+	var credJSON []byte
+
+	cp, err := credential.Parse(opt.Credential)
 	if err != nil {
 		return nil, err
 	}
-
-	//TODO: To make it easier, we just support authorized it
-	//via API key, maybe we can support OAuth in the future.
-	var token string
-	switch cred.Protocol() {
-	case credential.ProtocolAPIKey:
-		token = cred.APIKey()
+	switch cp.Protocol() {
+	case credential.ProtocolFile:
+		credJSON, err = ioutil.ReadFile(cp.File())
+		if err != nil {
+			return nil, err
+		}
+	case credential.ProtocolBase64:
+		credJSON, err = base64.StdEncoding.DecodeString(cp.Base64())
+		if err != nil {
+			return nil, err
+		}
 	default:
 		return nil, services.PairUnsupportedError{Pair: ps.WithCredential(opt.Credential)}
 	}
 
-	ctx := context.Background()
-	store.service, err = drive.NewService(ctx, option.WithAPIKey(token))
+	// Loading token source from binary data.
+	creds, err := google.CredentialsFromJSON(ctx, credJSON)
+	if err != nil {
+		return nil, err
+	}
+	ot := &oauth2.Transport{
+		Source: creds.TokenSource,
+		Base:   hc.Transport,
+	}
+	hc.Transport = ot
+
+	store.service, err = drive.NewService(ctx, option.WithHTTPClient(hc))
+	if err != nil {
+		return nil, err
+	}
+
 	return store, nil
 }
 

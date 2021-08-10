@@ -98,10 +98,12 @@ type pairStorageNew struct {
 	pairs []Pair
 
 	// Required pairs
-	HasCredential bool
-	Credential    string
-	HasName       bool
-	Name          string
+	HasCredential        bool
+	Credential           string
+	HasHTTPClientOptions bool
+	HTTPClientOptions    *httpclient.Options
+	HasName              bool
+	Name                 string
 	// Optional pairs
 	HasWorkDir bool
 	WorkDir    string
@@ -122,6 +124,12 @@ func parsePairStorageNew(opts []Pair) (pairStorageNew, error) {
 			}
 			result.HasCredential = true
 			result.Credential = v.Value.(string)
+		case "http_client_options":
+			if result.HasHTTPClientOptions {
+				continue
+			}
+			result.HasHTTPClientOptions = true
+			result.HTTPClientOptions = v.Value.(*httpclient.Options)
 		case "name":
 			if result.HasName {
 				continue
@@ -139,6 +147,9 @@ func parsePairStorageNew(opts []Pair) (pairStorageNew, error) {
 	}
 	if !result.HasCredential {
 		return pairStorageNew{}, services.PairRequiredError{Keys: []string{"credential"}}
+	}
+	if !result.HasHTTPClientOptions {
+		return pairStorageNew{}, services.PairRequiredError{Keys: []string{"http_client_options"}}
 	}
 	if !result.HasName {
 		return pairStorageNew{}, services.PairRequiredError{Keys: []string{"name"}}
