@@ -2,10 +2,9 @@ package gdrive
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"io/ioutil"
-	"log"
-	"net/http"
 	"strings"
 
 	"golang.org/x/oauth2"
@@ -18,6 +17,7 @@ import (
 
 	ps "github.com/beyondstorage/go-storage/v4/pairs"
 	"github.com/beyondstorage/go-storage/v4/pkg/credential"
+	"github.com/beyondstorage/go-storage/v4/pkg/httpclient"
 	"github.com/beyondstorage/go-storage/v4/services"
 	"github.com/beyondstorage/go-storage/v4/types"
 )
@@ -83,10 +83,6 @@ func newStorager(pairs ...types.Pair) (store *Storage, err error) {
 	if opt.HasWorkDir {
 		store.workDir = opt.WorkDir
 	}
-	cred, err := credential.Parse(opt.Credential)
-	if err != nil {
-		return nil, err
-	}
 
 	ctx := context.Background()
 
@@ -94,18 +90,44 @@ func newStorager(pairs ...types.Pair) (store *Storage, err error) {
 
 	// Google drive only support authorized by Oauth2
 	// Ref:https://developers.google.com/drive/api/v3/about-auth
-	switch cred.Protocol() {
+	hc := httpclient.New(opt.HTTPClientOptions)
+
+	var credJSON []byte
+
+	cp, err := credential.Parse(opt.Credential)
+	if err != nil {
+		return nil, err
+	}
+	switch cp.Protocol() {
 	case credential.ProtocolFile:
-		client, err := getClient(ctx, cred.File())
+		credJSON, err = ioutil.ReadFile(cp.File())
 		if err != nil {
 			return nil, err
 		}
-		cliOpt = option.WithHTTPClient(client)
+	case credential.ProtocolBase64:
+		credJSON, err = base64.StdEncoding.DecodeString(cp.Base64())
+		if err != nil {
+			return nil, err
+		}
 	default:
 		return nil, services.PairUnsupportedError{Pair: ps.WithCredential(opt.Credential)}
 	}
 
-	store.service, err = drive.NewService(ctx, cliOpt)
+	// Loading token source from binary data.
+	creds, err := google.CredentialsFromJSON(ctx, credJSON)
+	if err != nil {
+		return nil, err
+	}
+	ot := &oauth2.Transport{
+		Source: creds.TokenSource,
+		Base:   hc.Transport,
+	}
+	hc.Transport = ot
+
+	store.service, err = drive.NewService(ctx, option.WithHTTPClient(hc))
+	if err != nil {
+		return nil, err
+	}
 
 	return store, nil
 }
@@ -204,32 +226,4 @@ func (s *Storage) getCache(path string) (string, bool) {
 		return id.(string), true
 	}
 	return "", false
-}
-
-func getClient(ctx context.Context, configFile string) (*http.Client, error) {
-	config, err := ioutil.ReadFile(configFile)
-	if err != nil {
-		return nil, err
-	}
-	conf, err := google.ConfigFromJSON(config, drive.DriveScope)
-
-	if err != nil {
-		return nil, err
-	}
-
-	authURL := conf.AuthCodeURL("state-token", oauth2.AccessTypeOffline)
-	fmt.Printf("Go to the following link in your browser then type the "+
-		"authorization code: \n%v\n", authURL)
-	fmt.Printf("Enter Verfication Code:\n")
-
-	var code string
-	if _, err := fmt.Scan(&code); err != nil {
-		log.Fatalf("Unable to read authorization code %v", err)
-	}
-
-	tok, err := conf.Exchange(ctx, code)
-	if err != nil {
-		log.Fatalf("Unable to retrieve token from web %v", err)
-	}
-	return conf.Client(ctx, tok), nil
 }
