@@ -16,6 +16,23 @@ import (
 
 const directoryMimeType = "application/vnd.google-apps.folder"
 
+func (s *Storage) copy(ctx context.Context, src string, dst string, opt pairStorageCopy) (err error) {
+	srcFileId, err := s.pathToId(ctx, src)
+	if err != nil {
+		return err
+	}
+
+	dstFile := &drive.File{Name: s.getFileName(dst)}
+
+	_, err = s.service.Files.Copy(srcFileId, dstFile).Context(ctx).Do()
+
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func (s *Storage) create(path string, opt pairStorageCreate) (o *Object) {
 	o = s.newObject(false)
 	o.ID = s.getAbsPath(path)

@@ -4,17 +4,17 @@ package gdrive
 import (
 	"context"
 	"io"
+	"time"
 
-	"github.com/beyondstorage/go-storage/v4/pkg/credential"
 	"github.com/beyondstorage/go-storage/v4/pkg/httpclient"
 	"github.com/beyondstorage/go-storage/v4/services"
 	. "github.com/beyondstorage/go-storage/v4/types"
 )
 
-var _ credential.Provider
 var _ Storager
 var _ services.ServiceError
 var _ httpclient.Options
+var _ time.Duration
 
 // Type is the type for gdrive
 const Type = "gdrive"
@@ -71,7 +71,7 @@ var pairMap = map[string]string{
 	"continuation_token":  "string",
 	"credential":          "string",
 	"endpoint":            "string",
-	"expire":              "int",
+	"expire":              "time.Duration",
 	"http_client_options": "*httpclient.Options",
 	"interceptor":         "Interceptor",
 	"io_callback":         "func([]byte)",
@@ -85,6 +85,7 @@ var pairMap = map[string]string{
 	"work_dir":            "string",
 }
 var (
+	_ Copier   = &Storage{}
 	_ Direr    = &Storage{}
 	_ Storager = &Storage{}
 )
@@ -148,6 +149,7 @@ func parsePairStorageNew(opts []Pair) (pairStorageNew, error) {
 
 // DefaultStoragePairs is default pairs for specific action
 type DefaultStoragePairs struct {
+	Copy      []Pair
 	Create    []Pair
 	CreateDir []Pair
 	Delete    []Pair
@@ -156,6 +158,29 @@ type DefaultStoragePairs struct {
 	Read      []Pair
 	Stat      []Pair
 	Write     []Pair
+}
+
+// pairStorageCopy is the parsed struct
+type pairStorageCopy struct {
+	pairs []Pair
+}
+
+// parsePairStorageCopy will parse Pair slice into *pairStorageCopy
+func (s *Storage) parsePairStorageCopy(opts []Pair) (pairStorageCopy, error) {
+	result := pairStorageCopy{
+		pairs: opts,
+	}
+
+	for _, v := range opts {
+		switch v.Key {
+		default:
+			return pairStorageCopy{}, services.PairUnsupportedError{Pair: v}
+		}
+	}
+
+	// Check required pairs.
+
+	return result, nil
 }
 
 // pairStorageCreate is the parsed struct
@@ -432,6 +457,53 @@ func (s *Storage) parsePairStorageWrite(opts []Pair) (pairStorageWrite, error) {
 	return result, nil
 }
 
+// Copy will copy an Object or multiple object in the service.
+//
+// ## Behavior
+//
+// - Copy only copy one and only one object.
+//   - Service DON'T NEED to support copy a non-empty directory or copy files recursively.
+//   - User NEED to implement copy a non-empty directory and copy recursively by themself.
+//   - Copy a file to a directory SHOULD return `ErrObjectModeInvalid`.
+// - Copy SHOULD NOT return an error as dst object exists.
+//   - Service that has native support for `overwrite` doesn't NEED to check the dst object exists or not.
+//   - Service that doesn't have native support for `overwrite` SHOULD check and delete the dst object if exists.
+// - A successful copy opration should be complete, which means the dst object's content and metadata should be the same as src object.
+//
+// This function will create a context by default.
+func (s *Storage) Copy(src string, dst string, pairs ...Pair) (err error) {
+	ctx := context.Background()
+	return s.CopyWithContext(ctx, src, dst, pairs...)
+}
+
+// CopyWithContext will copy an Object or multiple object in the service.
+//
+// ## Behavior
+//
+// - Copy only copy one and only one object.
+//   - Service DON'T NEED to support copy a non-empty directory or copy files recursively.
+//   - User NEED to implement copy a non-empty directory and copy recursively by themself.
+//   - Copy a file to a directory SHOULD return `ErrObjectModeInvalid`.
+// - Copy SHOULD NOT return an error as dst object exists.
+//   - Service that has native support for `overwrite` doesn't NEED to check the dst object exists or not.
+//   - Service that doesn't have native support for `overwrite` SHOULD check and delete the dst object if exists.
+// - A successful copy opration should be complete, which means the dst object's content and metadata should be the same as src object.
+func (s *Storage) CopyWithContext(ctx context.Context, src string, dst string, pairs ...Pair) (err error) {
+	defer func() {
+		err = s.formatError("copy", err, src, dst)
+	}()
+
+	pairs = append(pairs, s.defaultPairs.Copy...)
+	var opt pairStorageCopy
+
+	opt, err = s.parsePairStorageCopy(pairs)
+	if err != nil {
+		return
+	}
+
+	return s.copy(ctx, src, dst, opt)
+}
+
 // Create will create a new object without any api call.
 //
 // ## Behavior
@@ -522,6 +594,12 @@ func (s *Storage) DeleteWithContext(ctx context.Context, path string, pairs ...P
 
 // List will return list a specific path.
 //
+// ## Behavior
+//
+// - Service SHOULD support default `ListMode`.
+// - Service SHOULD implement `ListModeDir` without the check for `VirtualDir`.
+// - Service DON'T NEED to `Stat` while in `List`.
+//
 // This function will create a context by default.
 func (s *Storage) List(path string, pairs ...Pair) (oi *ObjectIterator, err error) {
 	ctx := context.Background()
@@ -529,6 +607,12 @@ func (s *Storage) List(path string, pairs ...Pair) (oi *ObjectIterator, err erro
 }
 
 // ListWithContext will return list a specific path.
+//
+// ## Behavior
+//
+// - Service SHOULD support default `ListMode`.
+// - Service SHOULD implement `ListModeDir` without the check for `VirtualDir`.
+// - Service DON'T NEED to `Stat` while in `List`.
 func (s *Storage) ListWithContext(ctx context.Context, path string, pairs ...Pair) (oi *ObjectIterator, err error) {
 	defer func() {
 		err = s.formatError("list", err, path)
@@ -622,6 +706,13 @@ func (s *Storage) StatWithContext(ctx context.Context, path string, pairs ...Pai
 
 // Write will write data into a file.
 //
+// ## Behavior
+//
+// - Write SHOULD NOT return an error as the object exist.
+//   - Service that has native support for `overwrite` doesn't NEED to check the object exists or not.
+//   - Service that doesn't have native support for `overwrite` SHOULD check and delete the object if exists.
+// - A successful write operation SHOULD be complete, which means the object's content and metadata should be the same as specified in write request.
+//
 // This function will create a context by default.
 func (s *Storage) Write(path string, r io.Reader, size int64, pairs ...Pair) (n int64, err error) {
 	ctx := context.Background()
@@ -629,6 +720,13 @@ func (s *Storage) Write(path string, r io.Reader, size int64, pairs ...Pair) (n 
 }
 
 // WriteWithContext will write data into a file.
+//
+// ## Behavior
+//
+// - Write SHOULD NOT return an error as the object exist.
+//   - Service that has native support for `overwrite` doesn't NEED to check the object exists or not.
+//   - Service that doesn't have native support for `overwrite` SHOULD check and delete the object if exists.
+// - A successful write operation SHOULD be complete, which means the object's content and metadata should be the same as specified in write request.
 func (s *Storage) WriteWithContext(ctx context.Context, path string, r io.Reader, size int64, pairs ...Pair) (n int64, err error) {
 	defer func() {
 		err = s.formatError("write", err, path)
