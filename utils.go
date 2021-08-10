@@ -86,8 +86,6 @@ func newStorager(pairs ...types.Pair) (store *Storage, err error) {
 
 	ctx := context.Background()
 
-	var cliOpt option.ClientOption
-
 	// Google drive only support authorized by Oauth2
 	// Ref:https://developers.google.com/drive/api/v3/about-auth
 	hc := httpclient.New(opt.HTTPClientOptions)
