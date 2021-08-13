@@ -4,8 +4,8 @@ name = "gdrive"
 implement = ["direr", "copier"]
 
 [namespace.storage.new]
-required = ["name","credential","http_client_options"]
-optional = ["work_dir"]
+required = ["name","credential"]
+optional = ["work_dir","http_client_options"]
 [namespace.storage.op.create]
 optional = ["object_mode"]
 

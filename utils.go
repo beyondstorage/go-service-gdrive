@@ -113,7 +113,8 @@ func newStorager(pairs ...types.Pair) (store *Storage, err error) {
 	}
 
 	// Loading token source from binary data.
-	creds, err := google.CredentialsFromJSON(ctx, credJSON)
+	// DriveScope means full control of gdrive
+	creds, err := google.CredentialsFromJSON(ctx, credJSON, drive.DriveScope)
 	if err != nil {
 		return nil, err
 	}
