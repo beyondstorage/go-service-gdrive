@@ -21,7 +21,7 @@ Set following environment variables:
 ```shell
 export STORAGE_GDRIVE_INTEGRATION_TEST=on
 export STORAGE_GDRIVE_NAME=demo
-export STORAGE_GDRIVE_CREDENTIAL=apikey:apikey
+export STORAGE_GDRIVE_CREDENTIAL=file:<abs_path_of_credential>
 ```
 
 Run tests
