@@ -155,7 +155,7 @@ func (s *Storage) nextObjectPage(ctx context.Context, page *ObjectPage) error {
 	if err != nil {
 		return err
 	}
-	q := s.service.Files.List().Q(fmt.Sprintf("parents=%s", dirId))
+	q := s.service.Files.List().Q(fmt.Sprintf("parents='%s'", dirId)).Fields("*")
 
 	if input.pageToken != "" {
 		q = q.PageToken(input.pageToken)
@@ -244,8 +244,8 @@ func (s *Storage) read(ctx context.Context, path string, w io.Writer, opt pairSt
 // If nothing is found, we will return an empty string and nil.
 // We will only return non nil if error occurs.
 func (s *Storage) searchContentInDir(ctx context.Context, dirId string, contentName string) (fileId string, err error) {
-	searchArg := fmt.Sprintf("name = %s and parents = %s", contentName, dirId)
-	fileList, err := s.service.Files.List().Context(ctx).Q(searchArg).Do()
+	searchArg := fmt.Sprintf("name = '%s' and parents = '%s'", contentName, dirId)
+	fileList, err := s.service.Files.List().Context(ctx).Q(searchArg).Fields("*").Do()
 	if err != nil {
 		return "", err
 	}
@@ -285,6 +285,11 @@ func (s *Storage) write(ctx context.Context, path string, r io.Reader, size int6
 	fileId, err := s.pathToId(ctx, path)
 
 	if err != nil {
+		return 0, err
+	}
+
+	// fileId can be empty when err is nil
+	if fileId == "" {
 		// upload
 		dirs, fileName := filepath.Split(path)
 
