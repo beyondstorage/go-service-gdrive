@@ -149,11 +149,18 @@ func (s *Storage) mkDir(ctx context.Context, parents string, dirName string) (st
 	return f.Id, nil
 }
 
-func (s *Storage) nextObjectPage(ctx context.Context, page *ObjectPage) error {
+func (s *Storage) nextObjectPage(ctx context.Context, page *ObjectPage) (err error) {
 	input := page.Status.(*objectPageStatus)
-	dirId, err := s.pathToId(ctx, input.path)
-	if err != nil {
-		return err
+
+	var dirId string
+	// root directory is a special case
+	if input.path == ""{
+		dirId = "root"
+	}else{
+		dirId, err = s.pathToId(ctx, input.path)
+		if err != nil {
+			return err
+		}
 	}
 	q := s.service.Files.List().Q(fmt.Sprintf("parents='%s'", dirId)).Fields("*")
 
