@@ -22,7 +22,23 @@ func (s *Storage) copy(ctx context.Context, src string, dst string, opt pairStor
 		return err
 	}
 
-	dstFile := &drive.File{Name: s.getFileName(dst)}
+	var parentsId string
+	parentsDirs, fileName := filepath.Split(dst)
+
+	if parentsDirs == ""{
+		parentsId = "root"
+	}else{
+		parentsId, err = s.pathToId(ctx, parentsDirs)
+
+		if err != nil {
+			return err
+		}
+	}
+
+	dstFile := &drive.File{
+		Name: fileName,
+		Parents: []string {parentsId},
+	}
 
 	_, err = s.service.Files.Copy(srcFileId, dstFile).Context(ctx).Do()
 
@@ -41,24 +57,37 @@ func (s *Storage) create(path string, opt pairStorageCreate) (o *Object) {
 }
 
 func (s *Storage) createDir(ctx context.Context, path string, opt pairStorageCreateDir) (o *Object, err error) {
-	path = s.getAbsPath(path)
-	pathUnits := strings.Split(path, "/")
-	parentsId := "root"
 
-	for _, v := range pathUnits {
-		parentsId, err = s.mkDir(ctx, parentsId, v)
-		if err != nil {
-			return nil, err
-		}
+	_, err = s.createDirs(ctx, path)
+
+	if err != nil {
+		return nil, err
 	}
 
 	o = s.newObject(true)
-	o.ID = path
-	o.Path = path
+	o.ID =s.getAbsPath(path)
+	o.Path =s.getAbsPath(path)
 	o.Mode = ModeDir
 
 	return o, nil
 
+}
+
+// This function is very similar to `createDir` but has different uses. Unlike `creatDir`, it
+// is mainly responsible for communicating with gdrive API
+func (s *Storage) createDirs(ctx context.Context, path string) (parentsId string, err error) {
+	path = s.getAbsPath(path)
+	pathUnits := strings.Split(path, "/")
+	parentsId = "root"
+
+	for _, v := range pathUnits {
+		parentsId, err = s.mkDir(ctx, parentsId, v)
+		if err != nil {
+			return "", err
+		}
+	}
+
+	return parentsId, nil
 }
 
 func (s *Storage) delete(ctx context.Context, path string, opt pairStorageDelete) (err error) {
@@ -244,6 +273,9 @@ func (s *Storage) stat(ctx context.Context, path string, opt pairStorageStat) (o
 // If it is, then we upload it, or we will overwrite it.
 func (s *Storage) write(ctx context.Context, path string, r io.Reader, size int64, opt pairStorageWrite) (n int64, err error) {
 
+	// Parent directory of the file
+	var parentsId string
+
 	r = io.LimitReader(r, size)
 
 	if opt.HasIoCallback {
@@ -257,19 +289,23 @@ func (s *Storage) write(ctx context.Context, path string, r io.Reader, size int6
 		dirs, fileName := filepath.Split(path)
 
 		if dirs != "" {
-			_, err = s.createDir(ctx, dirs, pairStorageCreateDir{})
+			parentsId, err = s.createDirs(ctx, dirs)
 			if err != nil {
 				return 0, err
 			}
 
 		}
 
-		file := &drive.File{Name: fileName}
-		_, err := s.service.Files.Create(file).Context(ctx).Media(r).Do()
+		file := &drive.File{
+			Name: fileName,
+			Parents: []string {parentsId},
+		}
+		_, err = s.service.Files.Create(file).Context(ctx).Media(r).Do()
 
 		if err != nil {
 			return 0, err
 		}
+
 	} else {
 		// update
 		newFile := &drive.File{Name: s.getFileName(path)}
