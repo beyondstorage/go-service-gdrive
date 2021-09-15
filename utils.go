@@ -181,13 +181,17 @@ func (s *Storage) newObject(done bool) *types.Object {
 
 // getAbsPath will calculate object storage's abs path
 func (s *Storage) getAbsPath(path string) string {
-	prefix := strings.TrimPrefix(s.workDir, "/")
-	return prefix + path
+	if (strings.HasPrefix(path, s.workDir)){
+		return path
+	}else{
+		prefix := strings.TrimPrefix(s.workDir, "/")
+		return prefix + "/" + path
+	}
 }
 
 // getRelPath will get object storage's rel path.
 func (s *Storage) getRelPath(path string) string {
-	prefix := strings.TrimPrefix(s.workDir, "/")
+	prefix := strings.TrimPrefix(s.workDir, "/") + "/"
 	return strings.TrimPrefix(path, prefix)
 }
 
