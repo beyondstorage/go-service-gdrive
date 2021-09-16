@@ -25,9 +25,9 @@ func (s *Storage) copy(ctx context.Context, src string, dst string, opt pairStor
 	var parentsId string
 	parentsDirs, fileName := filepath.Split(dst)
 
-	if parentsDirs == ""{
+	if parentsDirs == "" {
 		parentsId = "root"
-	}else{
+	} else {
 		parentsId, err = s.pathToId(ctx, parentsDirs)
 
 		if err != nil {
@@ -36,8 +36,8 @@ func (s *Storage) copy(ctx context.Context, src string, dst string, opt pairStor
 	}
 
 	dstFile := &drive.File{
-		Name: fileName,
-		Parents: []string {parentsId},
+		Name:    fileName,
+		Parents: []string{parentsId},
 	}
 
 	_, err = s.service.Files.Copy(srcFileId, dstFile).Context(ctx).Do()
@@ -65,8 +65,8 @@ func (s *Storage) createDir(ctx context.Context, path string, opt pairStorageCre
 	}
 
 	o = s.newObject(true)
-	o.ID =s.getAbsPath(path)
-	o.Path =s.getAbsPath(path)
+	o.ID = s.getAbsPath(path)
+	o.Path = s.getAbsPath(path)
 	o.Mode = ModeDir
 
 	return o, nil
@@ -76,14 +76,17 @@ func (s *Storage) createDir(ctx context.Context, path string, opt pairStorageCre
 // This function is very similar to `createDir` but has different uses. Unlike `creatDir`, it
 // is mainly responsible for communicating with gdrive API
 func (s *Storage) createDirs(ctx context.Context, path string) (parentsId string, err error) {
-	path = s.getAbsPath(path)
 	pathUnits := strings.Split(path, "/")
 	parentsId = "root"
 
 	for _, v := range pathUnits {
-		parentsId, err = s.mkDir(ctx, parentsId, v)
-		if err != nil {
-			return "", err
+		// TODO: use `strings.Split` to split path is not perfect, maybe
+		// we should add a helper function to do this.
+		if v != "" {
+			parentsId, err = s.mkDir(ctx, parentsId, v)
+			if err != nil {
+				return "", err
+			}
 		}
 	}
 
@@ -154,9 +157,9 @@ func (s *Storage) nextObjectPage(ctx context.Context, page *ObjectPage) (err err
 
 	var dirId string
 	// root directory is a special case
-	if input.path == ""{
+	if input.path == "" {
 		dirId = "root"
-	}else{
+	} else {
 		dirId, err = s.pathToId(ctx, input.path)
 		if err != nil {
 			return err
@@ -195,14 +198,14 @@ func (s *Storage) nextObjectPage(ctx context.Context, page *ObjectPage) (err err
 // err represents the error handled in pathToId
 // fileId represents the results: fileId empty means the path is not exist, otherwise it's the fileId of input path
 func (s *Storage) pathToId(ctx context.Context, path string) (fileId string, err error) {
-	absPath := s.getAbsPath(path)
+	path = s.getAbsPath(path)
 
 	fileId, found := s.getCache(path)
 	if found {
 		return fileId, nil
 	}
 
-	pathUnits := strings.Split(absPath, "/")
+	pathUnits := strings.Split(path, "/")
 	fileId = "root"
 	cacheCurrentPath := ""
 	// Traverse the whole path, break the loop if we fails at one search
@@ -280,6 +283,8 @@ func (s *Storage) stat(ctx context.Context, path string, opt pairStorageStat) (o
 // If it is, then we upload it, or we will overwrite it.
 func (s *Storage) write(ctx context.Context, path string, r io.Reader, size int64, opt pairStorageWrite) (n int64, err error) {
 
+	path = s.getAbsPath(path)
+
 	// Parent directory of the file
 	var parentsId string
 
@@ -309,8 +314,8 @@ func (s *Storage) write(ctx context.Context, path string, r io.Reader, size int6
 		}
 
 		file := &drive.File{
-			Name: fileName,
-			Parents: []string {parentsId},
+			Name:    fileName,
+			Parents: []string{parentsId},
 		}
 		_, err = s.service.Files.Create(file).Context(ctx).Media(r).Do()
 
