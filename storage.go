@@ -284,10 +284,21 @@ func (s *Storage) stat(ctx context.Context, path string, opt pairStorageStat) (o
 	if err != nil {
 		return nil, err
 	}
+
 	rp := s.getAbsPath(path)
 	o = s.newObject(true)
 	o.ID = rp
 	o.Path = path
+
+	//TODO: Just a temporary hack, maybe add a helper function to do this?
+	file, _ := s.service.Files.Get(content).Context(ctx).Fields("*").Do()
+
+	if file.MimeType == directoryMimeType {
+		o.Mode |= ModeDir
+	}
+
+	o.SetContentLength(file.Size)
+
 	return o, nil
 }
 
