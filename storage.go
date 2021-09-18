@@ -100,6 +100,12 @@ func (s *Storage) delete(ctx context.Context, path string, opt pairStorageDelete
 		return err
 	}
 	err = s.service.Files.Delete(fileId).Do()
+
+	if err != nil && strings.Contains(err.Error(), "404"){
+		err = nil
+	}
+		// Omit `path_lookup/not_found` error here.
+		// ref: [GSP-46](https://github.com/beyondstorage/specs/blob/master/rfcs/46-idempotent-delete.md)
 	if err != nil {
 		return err
 	}
