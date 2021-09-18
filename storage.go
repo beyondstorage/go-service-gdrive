@@ -274,7 +274,13 @@ func (s *Storage) searchContentInDir(ctx context.Context, dirId string, contentN
 }
 
 func (s *Storage) stat(ctx context.Context, path string, opt pairStorageStat) (o *Object, err error) {
-	_, err = s.pathToId(ctx, path)
+
+	content, err := s.pathToId(ctx, path)
+
+	if content == ""{
+		return nil, services.ErrObjectNotExist
+	}
+
 	if err != nil {
 		return nil, err
 	}
