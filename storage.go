@@ -66,7 +66,7 @@ func (s *Storage) createDir(ctx context.Context, path string, opt pairStorageCre
 
 	o = s.newObject(true)
 	o.ID = s.getAbsPath(path)
-	o.Path = s.getAbsPath(path)
+	o.Path = path
 	o.Mode = ModeDir
 
 	return o, nil
@@ -101,11 +101,11 @@ func (s *Storage) delete(ctx context.Context, path string, opt pairStorageDelete
 	}
 	err = s.service.Files.Delete(fileId).Do()
 
-	if err != nil && strings.Contains(err.Error(), "404"){
+	// Omit `path_lookup/not_found` error here.
+	// ref: [GSP-46](https://github.com/beyondstorage/specs/blob/master/rfcs/46-idempotent-delete.md)
+	if err != nil && strings.Contains(err.Error(), "404") {
 		err = nil
 	}
-		// Omit `path_lookup/not_found` error here.
-		// ref: [GSP-46](https://github.com/beyondstorage/specs/blob/master/rfcs/46-idempotent-delete.md)
 	if err != nil {
 		return err
 	}
@@ -162,14 +162,9 @@ func (s *Storage) nextObjectPage(ctx context.Context, page *ObjectPage) (err err
 	input := page.Status.(*objectPageStatus)
 
 	var dirId string
-	// root directory is a special case
-	if input.path == "" {
-		dirId = "root"
-	} else {
-		dirId, err = s.pathToId(ctx, input.path)
-		if err != nil {
-			return err
-		}
+	dirId, err = s.pathToId(ctx, input.path)
+	if err != nil {
+		return err
 	}
 	q := s.service.Files.List().Q(fmt.Sprintf("parents='%s'", dirId)).Fields("*")
 
@@ -181,10 +176,15 @@ func (s *Storage) nextObjectPage(ctx context.Context, page *ObjectPage) (err err
 	if err != nil {
 		return err
 	}
+
+	if len(r.Files) == 0 {
+		return IterateDone
+	}
+
 	for _, f := range r.Files {
 		o := s.newObject(true)
-		// There is no way to get the path of the file directly, we have to do this
-		o.Path = input.path + "/" + f.Name
+		o.SetContentLength(f.Size)
+		o.Path = f.Name
 		switch f.MimeType {
 		case directoryMimeType:
 			o.Mode = ModeDir
@@ -277,7 +277,7 @@ func (s *Storage) stat(ctx context.Context, path string, opt pairStorageStat) (o
 
 	content, err := s.pathToId(ctx, path)
 
-	if content == ""{
+	if content == "" {
 		return nil, services.ErrObjectNotExist
 	}
 
@@ -306,8 +306,6 @@ func (s *Storage) stat(ctx context.Context, path string, opt pairStorageStat) (o
 // If it is, then we upload it, or we will overwrite it.
 func (s *Storage) write(ctx context.Context, path string, r io.Reader, size int64, opt pairStorageWrite) (n int64, err error) {
 
-	path = s.getAbsPath(path)
-
 	// Parent directory of the file
 	var parentsId string
 
@@ -326,7 +324,7 @@ func (s *Storage) write(ctx context.Context, path string, r io.Reader, size int6
 	// fileId can be empty when err is nil
 	if fileId == "" {
 		// upload
-		dirs, fileName := filepath.Split(path)
+		dirs, fileName := filepath.Split(s.getAbsPath(path))
 
 		if dirs != "" {
 			parentsId, err = s.createDirs(ctx, dirs)
