@@ -17,31 +17,30 @@ import (
 const directoryMimeType = "application/vnd.google-apps.folder"
 
 func (s *Storage) copy(ctx context.Context, src string, dst string, opt pairStorageCopy) (err error) {
+
+	var dstFile *drive.File
+
 	srcFileId, err := s.pathToId(ctx, src)
 	if err != nil {
 		return err
 	}
 
-	var parentsId string
-	parentsDirs, fileName := filepath.Split(dst)
+	dstFileId, err := s.pathToId(ctx, dst)
+	if err != nil {
+		return err
+	}
 
-	if parentsDirs == "" {
-		parentsId = "root"
-	} else {
-		parentsId, err = s.pathToId(ctx, parentsDirs)
-
+	// FIXME: I don't know how to directly copy a file into an existing one
+	if dstFileId != "" {
+		err = s.service.Files.Delete(dstFileId).Do()
 		if err != nil {
 			return err
 		}
 	}
-
-	dstFile := &drive.File{
-		Name:    fileName,
-		Parents: []string{parentsId},
+	dstFile = &drive.File{
+		Name: s.getFileName(dst),
 	}
-
 	_, err = s.service.Files.Copy(srcFileId, dstFile).Context(ctx).Do()
-
 	if err != nil {
 		return err
 	}
