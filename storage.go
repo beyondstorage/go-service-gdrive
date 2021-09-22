@@ -17,15 +17,30 @@ import (
 const directoryMimeType = "application/vnd.google-apps.folder"
 
 func (s *Storage) copy(ctx context.Context, src string, dst string, opt pairStorageCopy) (err error) {
+
+	var dstFile *drive.File
+
 	srcFileId, err := s.pathToId(ctx, src)
 	if err != nil {
 		return err
 	}
 
-	dstFile := &drive.File{Name: s.getFileName(dst)}
+	dstFileId, err := s.pathToId(ctx, dst)
+	if err != nil {
+		return err
+	}
 
+	// FIXME: I don't know how to directly copy a file into an existing one
+	if dstFileId != "" {
+		err = s.service.Files.Delete(dstFileId).Do()
+		if err != nil {
+			return err
+		}
+	}
+	dstFile = &drive.File{
+		Name: s.getFileName(dst),
+	}
 	_, err = s.service.Files.Copy(srcFileId, dstFile).Context(ctx).Do()
-
 	if err != nil {
 		return err
 	}
@@ -41,24 +56,40 @@ func (s *Storage) create(path string, opt pairStorageCreate) (o *Object) {
 }
 
 func (s *Storage) createDir(ctx context.Context, path string, opt pairStorageCreateDir) (o *Object, err error) {
-	path = s.getAbsPath(path)
-	pathUnits := strings.Split(path, "/")
-	parentsId := "root"
 
-	for _, v := range pathUnits {
-		parentsId, err = s.mkDir(ctx, parentsId, v)
-		if err != nil {
-			return nil, err
-		}
+	_, err = s.createDirs(ctx, path)
+
+	if err != nil {
+		return nil, err
 	}
 
 	o = s.newObject(true)
-	o.ID = path
+	o.ID = s.getAbsPath(path)
 	o.Path = path
 	o.Mode = ModeDir
 
 	return o, nil
 
+}
+
+// This function is very similar to `createDir` but has different uses. Unlike `creatDir`, it
+// is mainly responsible for communicating with gdrive API
+func (s *Storage) createDirs(ctx context.Context, path string) (parentsId string, err error) {
+	pathUnits := strings.Split(path, "/")
+	parentsId = "root"
+
+	for _, v := range pathUnits {
+		// TODO: use `strings.Split` to split path is not perfect, maybe
+		// we should add a helper function to do this.
+		if v != "" {
+			parentsId, err = s.mkDir(ctx, parentsId, v)
+			if err != nil {
+				return "", err
+			}
+		}
+	}
+
+	return parentsId, nil
 }
 
 func (s *Storage) delete(ctx context.Context, path string, opt pairStorageDelete) (err error) {
@@ -68,6 +99,12 @@ func (s *Storage) delete(ctx context.Context, path string, opt pairStorageDelete
 		return err
 	}
 	err = s.service.Files.Delete(fileId).Do()
+
+	// Omit `path_lookup/not_found` error here.
+	// ref: [GSP-46](https://github.com/beyondstorage/specs/blob/master/rfcs/46-idempotent-delete.md)
+	if err != nil && strings.Contains(err.Error(), "404") {
+		err = nil
+	}
 	if err != nil {
 		return err
 	}
@@ -120,13 +157,15 @@ func (s *Storage) mkDir(ctx context.Context, parents string, dirName string) (st
 	return f.Id, nil
 }
 
-func (s *Storage) nextObjectPage(ctx context.Context, page *ObjectPage) error {
+func (s *Storage) nextObjectPage(ctx context.Context, page *ObjectPage) (err error) {
 	input := page.Status.(*objectPageStatus)
-	dirId, err := s.pathToId(ctx, input.path)
+
+	var dirId string
+	dirId, err = s.pathToId(ctx, input.path)
 	if err != nil {
 		return err
 	}
-	q := s.service.Files.List().Q(fmt.Sprintf("parents=%s", dirId))
+	q := s.service.Files.List().Q(fmt.Sprintf("parents='%s'", dirId)).Fields("*")
 
 	if input.pageToken != "" {
 		q = q.PageToken(input.pageToken)
@@ -136,10 +175,15 @@ func (s *Storage) nextObjectPage(ctx context.Context, page *ObjectPage) error {
 	if err != nil {
 		return err
 	}
+
+	if len(r.Files) == 0 {
+		return IterateDone
+	}
+
 	for _, f := range r.Files {
 		o := s.newObject(true)
-		// There is no way to get the path of the file directly, we have to do this
-		o.Path = input.path + "/" + f.Name
+		o.SetContentLength(f.Size)
+		o.Path = f.Name
 		switch f.MimeType {
 		case directoryMimeType:
 			o.Mode = ModeDir
@@ -159,14 +203,14 @@ func (s *Storage) nextObjectPage(ctx context.Context, page *ObjectPage) error {
 // err represents the error handled in pathToId
 // fileId represents the results: fileId empty means the path is not exist, otherwise it's the fileId of input path
 func (s *Storage) pathToId(ctx context.Context, path string) (fileId string, err error) {
-	absPath := s.getAbsPath(path)
+	path = s.getAbsPath(path)
 
 	fileId, found := s.getCache(path)
 	if found {
 		return fileId, nil
 	}
 
-	pathUnits := strings.Split(absPath, "/")
+	pathUnits := strings.Split(path, "/")
 	fileId = "root"
 	cacheCurrentPath := ""
 	// Traverse the whole path, break the loop if we fails at one search
@@ -215,8 +259,8 @@ func (s *Storage) read(ctx context.Context, path string, w io.Writer, opt pairSt
 // If nothing is found, we will return an empty string and nil.
 // We will only return non nil if error occurs.
 func (s *Storage) searchContentInDir(ctx context.Context, dirId string, contentName string) (fileId string, err error) {
-	searchArg := fmt.Sprintf("name = %s and parents = %s", contentName, dirId)
-	fileList, err := s.service.Files.List().Context(ctx).Q(searchArg).Do()
+	searchArg := fmt.Sprintf("name = '%s' and parents = '%s'", contentName, dirId)
+	fileList, err := s.service.Files.List().Context(ctx).Q(searchArg).Fields("*").Do()
 	if err != nil {
 		return "", err
 	}
@@ -229,20 +273,40 @@ func (s *Storage) searchContentInDir(ctx context.Context, dirId string, contentN
 }
 
 func (s *Storage) stat(ctx context.Context, path string, opt pairStorageStat) (o *Object, err error) {
-	_, err = s.pathToId(ctx, path)
+
+	content, err := s.pathToId(ctx, path)
+
+	if content == "" {
+		return nil, services.ErrObjectNotExist
+	}
+
 	if err != nil {
 		return nil, err
 	}
+
 	rp := s.getAbsPath(path)
 	o = s.newObject(true)
 	o.ID = rp
 	o.Path = path
+
+	//TODO: Just a temporary hack, maybe add a helper function to do this?
+	file, _ := s.service.Files.Get(content).Context(ctx).Fields("*").Do()
+
+	if file.MimeType == directoryMimeType {
+		o.Mode |= ModeDir
+	}
+
+	o.SetContentLength(file.Size)
+
 	return o, nil
 }
 
 // First we need make sure this file is not exist.
 // If it is, then we upload it, or we will overwrite it.
 func (s *Storage) write(ctx context.Context, path string, r io.Reader, size int64, opt pairStorageWrite) (n int64, err error) {
+
+	// Parent directory of the file
+	var parentsId string
 
 	r = io.LimitReader(r, size)
 
@@ -253,23 +317,32 @@ func (s *Storage) write(ctx context.Context, path string, r io.Reader, size int6
 	fileId, err := s.pathToId(ctx, path)
 
 	if err != nil {
+		return 0, err
+	}
+
+	// fileId can be empty when err is nil
+	if fileId == "" {
 		// upload
-		dirs, fileName := filepath.Split(path)
+		dirs, fileName := filepath.Split(s.getAbsPath(path))
 
 		if dirs != "" {
-			_, err = s.createDir(ctx, dirs, pairStorageCreateDir{})
+			parentsId, err = s.createDirs(ctx, dirs)
 			if err != nil {
 				return 0, err
 			}
 
 		}
 
-		file := &drive.File{Name: fileName}
-		_, err := s.service.Files.Create(file).Context(ctx).Media(r).Do()
+		file := &drive.File{
+			Name:    fileName,
+			Parents: []string{parentsId},
+		}
+		_, err = s.service.Files.Create(file).Context(ctx).Media(r).Do()
 
 		if err != nil {
 			return 0, err
 		}
+
 	} else {
 		// update
 		newFile := &drive.File{Name: s.getFileName(path)}

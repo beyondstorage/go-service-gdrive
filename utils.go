@@ -142,21 +142,19 @@ func formatError(err error) error {
 		return fmt.Errorf("%w: %v", services.ErrUnexpected, err)
 	}
 
-	//According to the docs, errors with the same error code may have
-	//multiple causes, to determine the specific type of error,
-	//we should evaluate the reason filed of the returned JSON
+	// FIXME: find better way to deal with errors.
 	//Ref: https://developers.google.com/drive/api/v3/handle-errors
-	switch e.Errors[0].Reason {
-	case "authError":
+	switch e.Code {
+	case 400:
+		return fmt.Errorf("%w: %v", services.ErrCapabilityInsufficient, err)
+	case 401:
 		return fmt.Errorf("%w: %v", credential.ErrInvalidValue, err)
-	case "dailyLimitExceeded", "rateLimitExceeded", "userRateLimitExceeded":
+	case 403:
 		return fmt.Errorf("%w: %v", services.ErrRequestThrottled, err)
-	case "backendError":
-		return fmt.Errorf("%w: %v", services.ErrServiceInternal, err)
-	case "notFound":
+	case 404:
 		return fmt.Errorf("%w: %v", services.ErrObjectNotExist, err)
-	case "insufficientFilePermissions", "appNotAuthorizedToFile":
-		return fmt.Errorf("%w: %v", services.ErrPermissionDenied, err)
+	case 500:
+		return fmt.Errorf("%w: %v", services.ErrServiceInternal, err)
 	default:
 		return fmt.Errorf("%w: %v", services.ErrUnexpected, err)
 	}
@@ -181,9 +179,13 @@ func (s *Storage) newObject(done bool) *types.Object {
 
 // getAbsPath will calculate object storage's abs path
 func (s *Storage) getAbsPath(path string) string {
-	if (strings.HasPrefix(path, s.workDir)){
+	if strings.HasPrefix(path, s.workDir) {
 		return path
-	}else{
+	} else if strings.TrimPrefix(s.workDir, "/") == strings.Trim(path, "/") {
+		return strings.TrimPrefix(s.workDir, "/")
+	} else if path == "" {
+		return strings.TrimPrefix(s.workDir, "/")
+	} else {
 		prefix := strings.TrimPrefix(s.workDir, "/")
 		return prefix + "/" + path
 	}
