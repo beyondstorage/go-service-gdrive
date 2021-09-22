@@ -2,6 +2,8 @@ SHELL := /bin/bash
 
 .PHONY: all check format lint build test generate tidy
 
+-include Makefile.env
+
 help:
 	@echo "Please use \`make <target>\` where <target> is one of"
 	@echo "  check               to do static check"
