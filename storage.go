@@ -304,6 +304,11 @@ func (s *Storage) stat(ctx context.Context, path string, opt pairStorageStat) (o
 // First we need make sure this file is not exist.
 // If it is, then we upload it, or we will overwrite it.
 func (s *Storage) write(ctx context.Context, path string, r io.Reader, size int64, opt pairStorageWrite) (n int64, err error) {
+	// According to GSP-751, we should allow the user to pass in a nil io.Reader.
+	// ref: https://github.com/beyondstorage/go-storage/blob/master/docs/rfcs/751-write-empty-file-behavior.md
+	if r == nil && size != 0 {
+		return 0, fmt.Errorf("reader is nil but size is not nil")
+	}
 
 	// Parent directory of the file
 	var parentsId string
