@@ -5,6 +5,7 @@ import (
 	"context"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	. "github.com/beyondstorage/go-storage/v4/pairs"
@@ -13,12 +14,14 @@ import (
 	. "github.com/beyondstorage/go-storage/v4/types"
 )
 
-var _ Storager
-var _ services.ServiceError
-var _ httpclient.Options
-var _ time.Duration
-var _ http.Request
-var _ Error
+var (
+	_ Storager
+	_ services.ServiceError
+	_ httpclient.Options
+	_ time.Duration
+	_ http.Request
+	_ Error
+)
 
 // Type is the type for gdrive
 const Type = "gdrive"
@@ -46,13 +49,14 @@ func setObjectSystemMetadata(o *Object, sm ObjectSystemMetadata) {
 	o.SetSystemMetadata(sm)
 }
 
-// StorageSystemMetadata stores system metadata for storage meta.
+// StorageSystemMetadata stores system metadata for object.
 type StorageSystemMetadata struct {
 }
 
-// GetStorageSystemMetadata will get SystemMetadata from StorageMeta.
+// GetStorageSystemMetadata will get StorageSystemMetadata from Storage.
 //
-// - The returning StorageSystemMetadata is read only and should not be modified.
+// - This function should not be called by service implementer.
+// - The returning StorageServiceMetadata is read only and should not be modified.
 func GetStorageSystemMetadata(s *StorageMeta) StorageSystemMetadata {
 	sm, ok := s.GetSystemMetadata()
 	if ok {
@@ -61,7 +65,7 @@ func GetStorageSystemMetadata(s *StorageMeta) StorageSystemMetadata {
 	return StorageSystemMetadata{}
 }
 
-// setStorageSystemMetadata will set SystemMetadata into StorageMeta.
+// setStorageSystemMetadata will set StorageSystemMetadata into Storage.
 //
 // - This function should only be called once, please make sure all data has been written before set.
 func setStorageSystemMetadata(s *StorageMeta, sm StorageSystemMetadata) {
@@ -70,48 +74,19 @@ func setStorageSystemMetadata(s *StorageMeta, sm StorageSystemMetadata) {
 
 // WithDefaultStoragePairs will apply default_storage_pairs value to Options.
 //
-// DefaultStoragePairs set default pairs for storager actions
+// set default pairs for storager actions
 func WithDefaultStoragePairs(v DefaultStoragePairs) Pair {
-	return Pair{
-		Key:   "default_storage_pairs",
-		Value: v,
-	}
+	return Pair{Key: "default_storage_pairs", Value: v}
 }
 
 // WithStorageFeatures will apply storage_features value to Options.
 //
-// StorageFeatures set storage features
+// set storage features
 func WithStorageFeatures(v StorageFeatures) Pair {
-	return Pair{
-		Key:   "storage_features",
-		Value: v,
-	}
+	return Pair{Key: "storage_features", Value: v}
 }
 
-var pairMap = map[string]string{
-	"content_md5":           "string",
-	"content_type":          "string",
-	"context":               "context.Context",
-	"continuation_token":    "string",
-	"credential":            "string",
-	"default_content_type":  "string",
-	"default_io_callback":   "func([]byte)",
-	"default_storage_pairs": "DefaultStoragePairs",
-	"endpoint":              "string",
-	"expire":                "time.Duration",
-	"http_client_options":   "*httpclient.Options",
-	"interceptor":           "Interceptor",
-	"io_callback":           "func([]byte)",
-	"list_mode":             "ListMode",
-	"location":              "string",
-	"multipart_id":          "string",
-	"name":                  "string",
-	"object_mode":           "ObjectMode",
-	"offset":                "int64",
-	"size":                  "int64",
-	"storage_features":      "StorageFeatures",
-	"work_dir":              "string",
-}
+var pairMap = map[string]string{"content_md5": "string", "content_type": "string", "context": "context.Context", "continuation_token": "string", "credential": "string", "default_content_type": "string", "default_io_callback": "func([]byte)", "default_storage_pairs": "DefaultStoragePairs", "endpoint": "string", "expire": "time.Duration", "http_client_options": "*httpclient.Options", "interceptor": "Interceptor", "io_callback": "func([]byte)", "list_mode": "ListMode", "location": "string", "multipart_id": "string", "name": "string", "object_mode": "ObjectMode", "offset": "int64", "size": "int64", "storage_features": "StorageFeatures", "work_dir": "string"}
 var (
 	_ Copier   = &Storage{}
 	_ Direr    = &Storage{}
@@ -131,6 +106,10 @@ type pairStorageNew struct {
 	HasName       bool
 	Name          string
 	// Optional pairs
+	HasDefaultContentType  bool
+	DefaultContentType     string
+	HasDefaultIoCallback   bool
+	DefaultIoCallback      func([]byte)
 	HasDefaultStoragePairs bool
 	DefaultStoragePairs    DefaultStoragePairs
 	HasHTTPClientOptions   bool
@@ -140,22 +119,15 @@ type pairStorageNew struct {
 	HasWorkDir             bool
 	WorkDir                string
 	// Enable features
-	// Default pairs
-	hasDefaultContentType bool
-	DefaultContentType    string
-	hasDefaultIoCallback  bool
-	DefaultIoCallback     func([]byte)
 }
 
 // parsePairStorageNew will parse Pair slice into *pairStorageNew
 func parsePairStorageNew(opts []Pair) (pairStorageNew, error) {
-	result := pairStorageNew{
-		pairs: opts,
-	}
+	result :=
+		pairStorageNew{pairs: opts}
 
 	for _, v := range opts {
 		switch v.Key {
-		// Required pairs
 		case "credential":
 			if result.HasCredential {
 				continue
@@ -168,7 +140,18 @@ func parsePairStorageNew(opts []Pair) (pairStorageNew, error) {
 			}
 			result.HasName = true
 			result.Name = v.Value.(string)
-		// Optional pairs
+		case "default_content_type":
+			if result.HasDefaultContentType {
+				continue
+			}
+			result.HasDefaultContentType = true
+			result.DefaultContentType = v.Value.(string)
+		case "default_io_callback":
+			if result.HasDefaultIoCallback {
+				continue
+			}
+			result.HasDefaultIoCallback = true
+			result.DefaultIoCallback = v.Value.(func([]byte))
 		case "default_storage_pairs":
 			if result.HasDefaultStoragePairs {
 				continue
@@ -193,43 +176,26 @@ func parsePairStorageNew(opts []Pair) (pairStorageNew, error) {
 			}
 			result.HasWorkDir = true
 			result.WorkDir = v.Value.(string)
-		// Enable features
-		// Default pairs
-		case "default_content_type":
-			if result.hasDefaultContentType {
-				continue
-			}
-			result.hasDefaultContentType = true
-			result.DefaultContentType = v.Value.(string)
-		case "default_io_callback":
-			if result.hasDefaultIoCallback {
-				continue
-			}
-			result.hasDefaultIoCallback = true
-			result.DefaultIoCallback = v.Value.(func([]byte))
 		}
 	}
-
 	// Enable features
 
 	// Default pairs
-	if result.hasDefaultContentType {
+	if result.HasDefaultContentType {
 		result.HasDefaultStoragePairs = true
 		result.DefaultStoragePairs.Write = append(result.DefaultStoragePairs.Write, WithContentType(result.DefaultContentType))
 	}
-	if result.hasDefaultIoCallback {
+	if result.HasDefaultIoCallback {
 		result.HasDefaultStoragePairs = true
 		result.DefaultStoragePairs.Read = append(result.DefaultStoragePairs.Read, WithIoCallback(result.DefaultIoCallback))
 		result.DefaultStoragePairs.Write = append(result.DefaultStoragePairs.Write, WithIoCallback(result.DefaultIoCallback))
 	}
-
 	if !result.HasCredential {
 		return pairStorageNew{}, services.PairRequiredError{Keys: []string{"credential"}}
 	}
 	if !result.HasName {
 		return pairStorageNew{}, services.PairRequiredError{Keys: []string{"name"}}
 	}
-
 	return result, nil
 }
 
@@ -245,17 +211,15 @@ type DefaultStoragePairs struct {
 	Stat      []Pair
 	Write     []Pair
 }
-
-// pairStorageCopy is the parsed struct
 type pairStorageCopy struct {
 	pairs []Pair
+	// Required pairs
+	// Optional pairs
 }
 
-// parsePairStorageCopy will parse Pair slice into *pairStorageCopy
 func (s *Storage) parsePairStorageCopy(opts []Pair) (pairStorageCopy, error) {
-	result := pairStorageCopy{
-		pairs: opts,
-	}
+	result :=
+		pairStorageCopy{pairs: opts}
 
 	for _, v := range opts {
 		switch v.Key {
@@ -264,23 +228,20 @@ func (s *Storage) parsePairStorageCopy(opts []Pair) (pairStorageCopy, error) {
 		}
 	}
 
-	// Check required pairs.
-
 	return result, nil
 }
 
-// pairStorageCreate is the parsed struct
 type pairStorageCreate struct {
-	pairs         []Pair
+	pairs []Pair
+	// Required pairs
+	// Optional pairs
 	HasObjectMode bool
 	ObjectMode    ObjectMode
 }
 
-// parsePairStorageCreate will parse Pair slice into *pairStorageCreate
 func (s *Storage) parsePairStorageCreate(opts []Pair) (pairStorageCreate, error) {
-	result := pairStorageCreate{
-		pairs: opts,
-	}
+	result :=
+		pairStorageCreate{pairs: opts}
 
 	for _, v := range opts {
 		switch v.Key {
@@ -290,27 +251,23 @@ func (s *Storage) parsePairStorageCreate(opts []Pair) (pairStorageCreate, error)
 			}
 			result.HasObjectMode = true
 			result.ObjectMode = v.Value.(ObjectMode)
-			continue
 		default:
 			return pairStorageCreate{}, services.PairUnsupportedError{Pair: v}
 		}
 	}
 
-	// Check required pairs.
-
 	return result, nil
 }
 
-// pairStorageCreateDir is the parsed struct
 type pairStorageCreateDir struct {
 	pairs []Pair
+	// Required pairs
+	// Optional pairs
 }
 
-// parsePairStorageCreateDir will parse Pair slice into *pairStorageCreateDir
 func (s *Storage) parsePairStorageCreateDir(opts []Pair) (pairStorageCreateDir, error) {
-	result := pairStorageCreateDir{
-		pairs: opts,
-	}
+	result :=
+		pairStorageCreateDir{pairs: opts}
 
 	for _, v := range opts {
 		switch v.Key {
@@ -319,23 +276,20 @@ func (s *Storage) parsePairStorageCreateDir(opts []Pair) (pairStorageCreateDir, 
 		}
 	}
 
-	// Check required pairs.
-
 	return result, nil
 }
 
-// pairStorageDelete is the parsed struct
 type pairStorageDelete struct {
-	pairs         []Pair
+	pairs []Pair
+	// Required pairs
+	// Optional pairs
 	HasObjectMode bool
 	ObjectMode    ObjectMode
 }
 
-// parsePairStorageDelete will parse Pair slice into *pairStorageDelete
 func (s *Storage) parsePairStorageDelete(opts []Pair) (pairStorageDelete, error) {
-	result := pairStorageDelete{
-		pairs: opts,
-	}
+	result :=
+		pairStorageDelete{pairs: opts}
 
 	for _, v := range opts {
 		switch v.Key {
@@ -345,29 +299,25 @@ func (s *Storage) parsePairStorageDelete(opts []Pair) (pairStorageDelete, error)
 			}
 			result.HasObjectMode = true
 			result.ObjectMode = v.Value.(ObjectMode)
-			continue
 		default:
 			return pairStorageDelete{}, services.PairUnsupportedError{Pair: v}
 		}
 	}
 
-	// Check required pairs.
-
 	return result, nil
 }
 
-// pairStorageList is the parsed struct
 type pairStorageList struct {
-	pairs       []Pair
+	pairs []Pair
+	// Required pairs
+	// Optional pairs
 	HasListMode bool
 	ListMode    ListMode
 }
 
-// parsePairStorageList will parse Pair slice into *pairStorageList
 func (s *Storage) parsePairStorageList(opts []Pair) (pairStorageList, error) {
-	result := pairStorageList{
-		pairs: opts,
-	}
+	result :=
+		pairStorageList{pairs: opts}
 
 	for _, v := range opts {
 		switch v.Key {
@@ -377,27 +327,23 @@ func (s *Storage) parsePairStorageList(opts []Pair) (pairStorageList, error) {
 			}
 			result.HasListMode = true
 			result.ListMode = v.Value.(ListMode)
-			continue
 		default:
 			return pairStorageList{}, services.PairUnsupportedError{Pair: v}
 		}
 	}
 
-	// Check required pairs.
-
 	return result, nil
 }
 
-// pairStorageMetadata is the parsed struct
 type pairStorageMetadata struct {
 	pairs []Pair
+	// Required pairs
+	// Optional pairs
 }
 
-// parsePairStorageMetadata will parse Pair slice into *pairStorageMetadata
 func (s *Storage) parsePairStorageMetadata(opts []Pair) (pairStorageMetadata, error) {
-	result := pairStorageMetadata{
-		pairs: opts,
-	}
+	result :=
+		pairStorageMetadata{pairs: opts}
 
 	for _, v := range opts {
 		switch v.Key {
@@ -406,14 +352,13 @@ func (s *Storage) parsePairStorageMetadata(opts []Pair) (pairStorageMetadata, er
 		}
 	}
 
-	// Check required pairs.
-
 	return result, nil
 }
 
-// pairStorageRead is the parsed struct
 type pairStorageRead struct {
-	pairs         []Pair
+	pairs []Pair
+	// Required pairs
+	// Optional pairs
 	HasIoCallback bool
 	IoCallback    func([]byte)
 	HasOffset     bool
@@ -422,11 +367,9 @@ type pairStorageRead struct {
 	Size          int64
 }
 
-// parsePairStorageRead will parse Pair slice into *pairStorageRead
 func (s *Storage) parsePairStorageRead(opts []Pair) (pairStorageRead, error) {
-	result := pairStorageRead{
-		pairs: opts,
-	}
+	result :=
+		pairStorageRead{pairs: opts}
 
 	for _, v := range opts {
 		switch v.Key {
@@ -436,43 +379,37 @@ func (s *Storage) parsePairStorageRead(opts []Pair) (pairStorageRead, error) {
 			}
 			result.HasIoCallback = true
 			result.IoCallback = v.Value.(func([]byte))
-			continue
 		case "offset":
 			if result.HasOffset {
 				continue
 			}
 			result.HasOffset = true
 			result.Offset = v.Value.(int64)
-			continue
 		case "size":
 			if result.HasSize {
 				continue
 			}
 			result.HasSize = true
 			result.Size = v.Value.(int64)
-			continue
 		default:
 			return pairStorageRead{}, services.PairUnsupportedError{Pair: v}
 		}
 	}
 
-	// Check required pairs.
-
 	return result, nil
 }
 
-// pairStorageStat is the parsed struct
 type pairStorageStat struct {
-	pairs         []Pair
+	pairs []Pair
+	// Required pairs
+	// Optional pairs
 	HasObjectMode bool
 	ObjectMode    ObjectMode
 }
 
-// parsePairStorageStat will parse Pair slice into *pairStorageStat
 func (s *Storage) parsePairStorageStat(opts []Pair) (pairStorageStat, error) {
-	result := pairStorageStat{
-		pairs: opts,
-	}
+	result :=
+		pairStorageStat{pairs: opts}
 
 	for _, v := range opts {
 		switch v.Key {
@@ -482,20 +419,18 @@ func (s *Storage) parsePairStorageStat(opts []Pair) (pairStorageStat, error) {
 			}
 			result.HasObjectMode = true
 			result.ObjectMode = v.Value.(ObjectMode)
-			continue
 		default:
 			return pairStorageStat{}, services.PairUnsupportedError{Pair: v}
 		}
 	}
 
-	// Check required pairs.
-
 	return result, nil
 }
 
-// pairStorageWrite is the parsed struct
 type pairStorageWrite struct {
-	pairs          []Pair
+	pairs []Pair
+	// Required pairs
+	// Optional pairs
 	HasContentMd5  bool
 	ContentMd5     string
 	HasContentType bool
@@ -504,11 +439,9 @@ type pairStorageWrite struct {
 	IoCallback     func([]byte)
 }
 
-// parsePairStorageWrite will parse Pair slice into *pairStorageWrite
 func (s *Storage) parsePairStorageWrite(opts []Pair) (pairStorageWrite, error) {
-	result := pairStorageWrite{
-		pairs: opts,
-	}
+	result :=
+		pairStorageWrite{pairs: opts}
 
 	for _, v := range opts {
 		switch v.Key {
@@ -518,65 +451,33 @@ func (s *Storage) parsePairStorageWrite(opts []Pair) (pairStorageWrite, error) {
 			}
 			result.HasContentMd5 = true
 			result.ContentMd5 = v.Value.(string)
-			continue
 		case "content_type":
 			if result.HasContentType {
 				continue
 			}
 			result.HasContentType = true
 			result.ContentType = v.Value.(string)
-			continue
 		case "io_callback":
 			if result.HasIoCallback {
 				continue
 			}
 			result.HasIoCallback = true
 			result.IoCallback = v.Value.(func([]byte))
-			continue
 		default:
 			return pairStorageWrite{}, services.PairUnsupportedError{Pair: v}
 		}
 	}
 
-	// Check required pairs.
-
 	return result, nil
 }
-
-// Copy will copy an Object or multiple object in the service.
-//
-// ## Behavior
-//
-// - Copy only copy one and only one object.
-//   - Service DON'T NEED to support copy a non-empty directory or copy files recursively.
-//   - User NEED to implement copy a non-empty directory and copy recursively by themself.
-//   - Copy a file to a directory SHOULD return `ErrObjectModeInvalid`.
-// - Copy SHOULD NOT return an error as dst object exists.
-//   - Service that has native support for `overwrite` doesn't NEED to check the dst object exists or not.
-//   - Service that doesn't have native support for `overwrite` SHOULD check and delete the dst object if exists.
-// - A successful copy opration should be complete, which means the dst object's content and metadata should be the same as src object.
-//
-// This function will create a context by default.
 func (s *Storage) Copy(src string, dst string, pairs ...Pair) (err error) {
 	ctx := context.Background()
 	return s.CopyWithContext(ctx, src, dst, pairs...)
 }
-
-// CopyWithContext will copy an Object or multiple object in the service.
-//
-// ## Behavior
-//
-// - Copy only copy one and only one object.
-//   - Service DON'T NEED to support copy a non-empty directory or copy files recursively.
-//   - User NEED to implement copy a non-empty directory and copy recursively by themself.
-//   - Copy a file to a directory SHOULD return `ErrObjectModeInvalid`.
-// - Copy SHOULD NOT return an error as dst object exists.
-//   - Service that has native support for `overwrite` doesn't NEED to check the dst object exists or not.
-//   - Service that doesn't have native support for `overwrite` SHOULD check and delete the dst object if exists.
-// - A successful copy opration should be complete, which means the dst object's content and metadata should be the same as src object.
 func (s *Storage) CopyWithContext(ctx context.Context, src string, dst string, pairs ...Pair) (err error) {
 	defer func() {
-		err = s.formatError("copy", err, src, dst)
+		err =
+			s.formatError("copy", err, src, dst)
 	}()
 
 	pairs = append(pairs, s.defaultPairs.Copy...)
@@ -586,40 +487,24 @@ func (s *Storage) CopyWithContext(ctx context.Context, src string, dst string, p
 	if err != nil {
 		return
 	}
-
-	return s.copy(ctx, src, dst, opt)
+	return s.copy(ctx, strings.ReplaceAll(src, "\\", "/"), strings.ReplaceAll(dst, "\\", "/"), opt)
 }
-
-// Create will create a new object without any api call.
-//
-// ## Behavior
-//
-// - Create SHOULD NOT send any API call.
-// - Create SHOULD accept ObjectMode pair as object mode.
-//
-// This function will create a context by default.
 func (s *Storage) Create(path string, pairs ...Pair) (o *Object) {
 	pairs = append(pairs, s.defaultPairs.Create...)
 	var opt pairStorageCreate
 
-	// Ignore error while handling local funtions.
+	// Ignore error while handling local functions.
 	opt, _ = s.parsePairStorageCreate(pairs)
-
 	return s.create(path, opt)
 }
-
-// CreateDir will create a new dir object.
-//
-// This function will create a context by default.
 func (s *Storage) CreateDir(path string, pairs ...Pair) (o *Object, err error) {
 	ctx := context.Background()
 	return s.CreateDirWithContext(ctx, path, pairs...)
 }
-
-// CreateDirWithContext will create a new dir object.
 func (s *Storage) CreateDirWithContext(ctx context.Context, path string, pairs ...Pair) (o *Object, err error) {
 	defer func() {
-		err = s.formatError("create_dir", err, path)
+		err =
+			s.formatError("create_dir", err, path)
 	}()
 
 	pairs = append(pairs, s.defaultPairs.CreateDir...)
@@ -629,42 +514,16 @@ func (s *Storage) CreateDirWithContext(ctx context.Context, path string, pairs .
 	if err != nil {
 		return
 	}
-
-	return s.createDir(ctx, path, opt)
+	return s.createDir(ctx, strings.ReplaceAll(path, "\\", "/"), opt)
 }
-
-// Delete will delete an object from service.
-//
-// ## Behavior
-//
-// - Delete only delete one and only one object.
-//   - Service DON'T NEED to support remove all.
-//   - User NEED to implement remove_all by themself.
-// - Delete is idempotent.
-//   - Successful delete always return nil error.
-//   - Delete SHOULD never return `ObjectNotExist`
-//   - Delete DON'T NEED to check the object exist or not.
-//
-// This function will create a context by default.
 func (s *Storage) Delete(path string, pairs ...Pair) (err error) {
 	ctx := context.Background()
 	return s.DeleteWithContext(ctx, path, pairs...)
 }
-
-// DeleteWithContext will delete an object from service.
-//
-// ## Behavior
-//
-// - Delete only delete one and only one object.
-//   - Service DON'T NEED to support remove all.
-//   - User NEED to implement remove_all by themself.
-// - Delete is idempotent.
-//   - Successful delete always return nil error.
-//   - Delete SHOULD never return `ObjectNotExist`
-//   - Delete DON'T NEED to check the object exist or not.
 func (s *Storage) DeleteWithContext(ctx context.Context, path string, pairs ...Pair) (err error) {
 	defer func() {
-		err = s.formatError("delete", err, path)
+		err =
+			s.formatError("delete", err, path)
 	}()
 
 	pairs = append(pairs, s.defaultPairs.Delete...)
@@ -674,34 +533,16 @@ func (s *Storage) DeleteWithContext(ctx context.Context, path string, pairs ...P
 	if err != nil {
 		return
 	}
-
-	return s.delete(ctx, path, opt)
+	return s.delete(ctx, strings.ReplaceAll(path, "\\", "/"), opt)
 }
-
-// List will return list a specific path.
-//
-// ## Behavior
-//
-// - Service SHOULD support default `ListMode`.
-// - Service SHOULD implement `ListModeDir` without the check for `VirtualDir`.
-// - Service DON'T NEED to `Stat` while in `List`.
-//
-// This function will create a context by default.
 func (s *Storage) List(path string, pairs ...Pair) (oi *ObjectIterator, err error) {
 	ctx := context.Background()
 	return s.ListWithContext(ctx, path, pairs...)
 }
-
-// ListWithContext will return list a specific path.
-//
-// ## Behavior
-//
-// - Service SHOULD support default `ListMode`.
-// - Service SHOULD implement `ListModeDir` without the check for `VirtualDir`.
-// - Service DON'T NEED to `Stat` while in `List`.
 func (s *Storage) ListWithContext(ctx context.Context, path string, pairs ...Pair) (oi *ObjectIterator, err error) {
 	defer func() {
-		err = s.formatError("list", err, path)
+		err =
+			s.formatError("list", err, path)
 	}()
 
 	pairs = append(pairs, s.defaultPairs.List...)
@@ -711,35 +552,24 @@ func (s *Storage) ListWithContext(ctx context.Context, path string, pairs ...Pai
 	if err != nil {
 		return
 	}
-
-	return s.list(ctx, path, opt)
+	return s.list(ctx, strings.ReplaceAll(path, "\\", "/"), opt)
 }
-
-// Metadata will return current storager metadata.
-//
-// This function will create a context by default.
 func (s *Storage) Metadata(pairs ...Pair) (meta *StorageMeta) {
 	pairs = append(pairs, s.defaultPairs.Metadata...)
 	var opt pairStorageMetadata
 
-	// Ignore error while handling local funtions.
+	// Ignore error while handling local functions.
 	opt, _ = s.parsePairStorageMetadata(pairs)
-
 	return s.metadata(opt)
 }
-
-// Read will read the file's data.
-//
-// This function will create a context by default.
 func (s *Storage) Read(path string, w io.Writer, pairs ...Pair) (n int64, err error) {
 	ctx := context.Background()
 	return s.ReadWithContext(ctx, path, w, pairs...)
 }
-
-// ReadWithContext will read the file's data.
 func (s *Storage) ReadWithContext(ctx context.Context, path string, w io.Writer, pairs ...Pair) (n int64, err error) {
 	defer func() {
-		err = s.formatError("read", err, path)
+		err =
+			s.formatError("read", err, path)
 	}()
 
 	pairs = append(pairs, s.defaultPairs.Read...)
@@ -749,34 +579,16 @@ func (s *Storage) ReadWithContext(ctx context.Context, path string, w io.Writer,
 	if err != nil {
 		return
 	}
-
-	return s.read(ctx, path, w, opt)
+	return s.read(ctx, strings.ReplaceAll(path, "\\", "/"), w, opt)
 }
-
-// Stat will stat a path to get info of an object.
-//
-// ## Behavior
-//
-// - Stat SHOULD accept ObjectMode pair as hints.
-//   - Service COULD have different implementations for different object mode.
-//   - Service SHOULD check if returning ObjectMode is match
-//
-// This function will create a context by default.
 func (s *Storage) Stat(path string, pairs ...Pair) (o *Object, err error) {
 	ctx := context.Background()
 	return s.StatWithContext(ctx, path, pairs...)
 }
-
-// StatWithContext will stat a path to get info of an object.
-//
-// ## Behavior
-//
-// - Stat SHOULD accept ObjectMode pair as hints.
-//   - Service COULD have different implementations for different object mode.
-//   - Service SHOULD check if returning ObjectMode is match
 func (s *Storage) StatWithContext(ctx context.Context, path string, pairs ...Pair) (o *Object, err error) {
 	defer func() {
-		err = s.formatError("stat", err, path)
+		err =
+			s.formatError("stat", err, path)
 	}()
 
 	pairs = append(pairs, s.defaultPairs.Stat...)
@@ -786,36 +598,16 @@ func (s *Storage) StatWithContext(ctx context.Context, path string, pairs ...Pai
 	if err != nil {
 		return
 	}
-
-	return s.stat(ctx, path, opt)
+	return s.stat(ctx, strings.ReplaceAll(path, "\\", "/"), opt)
 }
-
-// Write will write data into a file.
-//
-// ## Behavior
-//
-// - Write SHOULD NOT return an error as the object exist.
-//   - Service that has native support for `overwrite` doesn't NEED to check the object exists or not.
-//   - Service that doesn't have native support for `overwrite` SHOULD check and delete the object if exists.
-// - A successful write operation SHOULD be complete, which means the object's content and metadata should be the same as specified in write request.
-//
-// This function will create a context by default.
 func (s *Storage) Write(path string, r io.Reader, size int64, pairs ...Pair) (n int64, err error) {
 	ctx := context.Background()
 	return s.WriteWithContext(ctx, path, r, size, pairs...)
 }
-
-// WriteWithContext will write data into a file.
-//
-// ## Behavior
-//
-// - Write SHOULD NOT return an error as the object exist.
-//   - Service that has native support for `overwrite` doesn't NEED to check the object exists or not.
-//   - Service that doesn't have native support for `overwrite` SHOULD check and delete the object if exists.
-// - A successful write operation SHOULD be complete, which means the object's content and metadata should be the same as specified in write request.
 func (s *Storage) WriteWithContext(ctx context.Context, path string, r io.Reader, size int64, pairs ...Pair) (n int64, err error) {
 	defer func() {
-		err = s.formatError("write", err, path)
+		err =
+			s.formatError("write", err, path)
 	}()
 
 	pairs = append(pairs, s.defaultPairs.Write...)
@@ -825,10 +617,8 @@ func (s *Storage) WriteWithContext(ctx context.Context, path string, r io.Reader
 	if err != nil {
 		return
 	}
-
-	return s.write(ctx, path, r, size, opt)
+	return s.write(ctx, strings.ReplaceAll(path, "\\", "/"), r, size, opt)
 }
-
 func init() {
 	services.RegisterStorager(Type, NewStorager)
 	services.RegisterSchema(Type, pairMap)
