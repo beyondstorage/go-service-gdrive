@@ -242,16 +242,29 @@ func (s *Storage) read(ctx context.Context, path string, w io.Writer, opt pairSt
 	if err != nil {
 		return 0, err
 	}
-	f, err := s.service.Files.Get(fileId).Context(ctx).Download()
+	fileGetCall := s.service.Files.Get(fileId)
+	if opt.HasOffset && !opt.HasSize {
+		rangeBytes := fmt.Sprintf("bytes=%d-", opt.Offset)
+		fileGetCall.Header().Add("Range", rangeBytes)
+	} else if !opt.HasOffset && opt.HasSize {
+		rangeBytes := fmt.Sprintf("bytes=0-%d", opt.Size-1)
+		fileGetCall.Header().Add("Range", rangeBytes)
+	} else if opt.HasOffset && opt.HasSize {
+		rangeBytes := fmt.Sprintf("bytes=%d-%d", opt.Offset, opt.Offset+opt.Size-1)
+		fileGetCall.Header().Add("Range", rangeBytes)
+	}
+	f, err := fileGetCall.Context(ctx).Download()
 	if err != nil {
 		return 0, err
 	}
 
+	var rc io.ReadCloser
+	rc = f.Body
 	if opt.HasIoCallback {
-		iowrap.CallbackReadCloser(f.Body, opt.IoCallback)
+		rc = iowrap.CallbackReadCloser(rc, opt.IoCallback)
 	}
 
-	return io.Copy(w, f.Body)
+	return io.Copy(w, rc)
 }
 
 // Search something in directory by passing it's name and the fileId of the folder.
